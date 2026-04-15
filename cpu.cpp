@@ -96,27 +96,36 @@ void CPU::handleInterrupt() {
         }
     }
 
-void CPU::step() {
-        if(halted) {
-            if(interruptPending()) halted = false;
-            else return;
-        }
+int CPU::step() {
+    int cycles = 0;
 
-        uint8_t opcode = memory.read(PC++);
-        executeOpcode(opcode);
-
-        if(enableIME_next) {
-            IME = true;
-            enableIME_next = false;
-        }
-
-        if(IME) {
-            // Check for interrupts and handle them
-            if(interruptPending()) {
-                handleInterrupt();
-            }
-        }
+    if(halted) {
+        if(interruptPending()) halted = false;
+        else return 4;
     }
+
+    uint8_t opcode = memory.read(PC++);
+
+    // Interpret CB-prefixed opcodes
+    if (opcode == 0xCB) {
+        uint8_t cb_opcode = memory.read(PC++);
+        cycles += executeCBOpcode(cb_opcode);
+    } else {
+        cycles += executeOpcode(opcode);
+    }
+
+    if(enableIME_next) {
+        IME = true;
+        enableIME_next = false;
+    }
+
+    if(IME && interruptPending()) {
+        handleInterrupt();
+        cycles += 20; // 20 cycles for interrupt handling
+    }
+
+    return cycles;
+}
 
 uint16_t CPU::read16Immediate() {
         // Implementation to read a 16-bit immediate value from memory
@@ -341,11 +350,6 @@ void CPU::jr(int8_t offset) {
         PC += offset;
     }
 
-void CPU::jr(uint8_t condition, int8_t offset) {
-        // Jump relative if condition is true
-        if (checkCondition(condition)) jr(offset);
-    }
-
 void CPU::ret(uint8_t condition) {
         // Return if condition is true
             if (checkCondition(condition)) ret();
@@ -360,11 +364,6 @@ void CPU::reti() {
         // Return from interrupt
         ei(); // Re-enable interrupts
         ret();
-    }
-
-void CPU::jp(uint8_t condition) {
-        // Jump if condition is true
-            if (checkCondition(condition)) jp(read16Immediate());
     }
 
 void CPU::jp(uint16_t addr) {
@@ -569,7 +568,7 @@ void CPU::executeALU(uint8_t operation, uint8_t operand) {
         }
     }
 
-bool CPU::handleLoad(uint8_t opcode) {
+int CPU::handleLoad(uint8_t opcode) {
         // ==============================
         // LD [HL+], A
         // 00 10 0010
@@ -577,7 +576,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0x22) {
             memory.write(getHL(), A);
             writeHL(getHL() + 1);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -587,7 +586,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0x32) {
             memory.write(getHL(), A);
             writeHL(getHL() - 1);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -597,7 +596,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0x2A) {
             A = memory.read(getHL());
             writeHL(getHL() + 1);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -607,7 +606,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0x3A) {
             A = memory.read(getHL());
             writeHL(getHL() - 1);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -617,7 +616,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11111000) == 0b01110000) {
             uint8_t src = opcode & 0b111;
             memory.write(getHL(), readReg(src));
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -627,7 +626,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11111000) == 0b01000000) {
             uint8_t dest = (opcode >> 3) & 0b111;
             writeReg(dest, memory.read(getHL()));
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -637,12 +636,12 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11000000) == 0b01000000) {
             if (opcode == 0x76) { // HALT
                 haltCPU();
-                return true;
+                return 4;
             }
             uint8_t dest = (opcode >> 3) & 0b111;
             uint8_t src  = opcode & 0b111;
             writeReg(dest, readReg(src));
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -652,7 +651,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11000111) == 0b00000110) {
             uint8_t dest = (opcode >> 3) & 0b111;
             writeReg(dest, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -662,7 +661,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11001111) == 0b00000010) {
             uint8_t reg = (opcode >> 4) & 0b11;
             memory.write(readReg16(reg), A);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -672,7 +671,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xEA) {
             uint16_t addr = read16Immediate();
             memory.write(addr, A);
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -682,7 +681,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xE0) {
             uint8_t addr = 0xFF00 + read8Immediate();
             memory.write(addr, A);
-            return true;
+            return 12;
         }
 
         // ==============================
@@ -692,7 +691,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xE2) {
             uint16_t addr = 0xFF00 + C;
             memory.write(addr, A);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -702,7 +701,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xFA) {
             uint16_t addr = read16Immediate();
             A = memory.read(addr);
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -712,7 +711,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xF0) {
             uint16_t addr = 0xFF00 + read8Immediate();
             A = memory.read(addr);
-            return true;
+            return 12;
         }
 
         // ==============================
@@ -722,7 +721,7 @@ bool CPU::handleLoad(uint8_t opcode) {
         if (opcode == 0xF2) {
             uint16_t addr = 0xFF00 + C;
             A = memory.read(addr);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -732,13 +731,13 @@ bool CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11001111) == 0b00000001) {
             uint8_t reg = (opcode >> 4) & 0b11;
             writeReg16(reg, read16Immediate());
-            return true;
+            return 12;
         }
 
-        return false;
+        return 0;
     }
 
-bool CPU::handleArithmetic8Bit(uint8_t opcode) {
+int CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         // ADC A, r8
         // 10001 RRR
@@ -747,9 +746,10 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // ADC A, [HL]
                 executeALU(0x01, memory.read(getHL()));
+                return 8;
             } else 
             executeALU(0x01, readReg(src));
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -758,7 +758,7 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         if (opcode == 0xCE) {
             executeALU(0x01, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -769,9 +769,11 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // ADD A, [HL]
                 executeALU(0x00, memory.read(getHL()));
-            } else
-            executeALU(0x00, readReg(src));
-            return true;
+                return 8;
+            } else {
+                executeALU(0x00, readReg(src));
+                return 4;
+            }
         }
 
         // ==============================
@@ -780,7 +782,7 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         if (opcode == 0xC6) {
             executeALU(0x00, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -791,9 +793,11 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // CP A, [HL]
                 executeALU(0x07, memory.read(getHL()));
-            } else
-            executeALU(0x07, readReg(src));
-            return true;
+                return 8;
+            } else {
+                executeALU(0x07, readReg(src));
+                return 4;
+            }
         }
 
         // ==============================
@@ -802,7 +806,7 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         if (opcode == 0xFE) {
             executeALU(0x07, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -815,10 +819,10 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
                 uint8_t value = memory.read(getHL());
                 uint8_t result = dec8(value);
                 memory.write(getHL(), result);
-                return true;
+                return 12;
             }
             writeReg(reg, dec8(readReg(reg)));
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -831,10 +835,10 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
                 uint8_t value = memory.read(getHL());
                 uint8_t result = inc8(value);
                 memory.write(getHL(), result);
-                return true;
+                return 12;
             }
             writeReg(reg, inc8(readReg(reg)));
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -845,9 +849,11 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // SBC A, [HL]
                 executeALU(0x03, memory.read(getHL()));
-            } else
-            executeALU(0x03, readReg(src));
-            return true;
+                return 8;
+            } else {
+                executeALU(0x03, readReg(src));
+                return 4;
+            }
         }
 
         // ==============================
@@ -856,7 +862,7 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         if (opcode == 0xDE) {
             executeALU(0x03, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -867,10 +873,11 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // SUB A, [HL]
                 executeALU(0x02, memory.read(getHL()));
+                return 8;
             } else {
                 executeALU(0x02, readReg(src));
+                return 4;
             }
-            return true;
         }
 
         // ==============================
@@ -879,13 +886,13 @@ bool CPU::handleArithmetic8Bit(uint8_t opcode) {
         // ==============================
         if (opcode == 0xD6) {
             executeALU(0x02, read8Immediate());
-            return true;
+            return 8;
         }
 
-        return false;
+        return 0;
     }
 
-bool CPU::handleArithmetic16Bit(uint8_t opcode) {
+int CPU::handleArithmetic16Bit(uint8_t opcode) {
         // ==============================
         // ADD HL, r16
         // 00 RR 1001
@@ -893,7 +900,7 @@ bool CPU::handleArithmetic16Bit(uint8_t opcode) {
         if ((opcode & 0b11001111) == 0b00001001) {
             uint8_t reg = (opcode >> 4) & 0b11;
             addHL(readReg16(reg));
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -903,7 +910,7 @@ bool CPU::handleArithmetic16Bit(uint8_t opcode) {
         if ((opcode & 0b11001111) == 0b00001011) {
             uint8_t reg = (opcode >> 4) & 0b11;
             writeReg16(reg, readReg16(reg) - 1);
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -913,12 +920,12 @@ bool CPU::handleArithmetic16Bit(uint8_t opcode) {
         if ((opcode & 0b11001111) == 0b00000011) {
             uint8_t reg = (opcode >> 4) & 0b11;
             writeReg16(reg, readReg16(reg) + 1);
-            return true;
+            return 8;
         }
-        return false;
+        return 0;
     }
 
-bool CPU::handleBitwise(uint8_t opcode) {
+int CPU::handleBitwise(uint8_t opcode) {
         // ==============================
         // AND A, r8
         // 10100 RRR
@@ -927,10 +934,11 @@ bool CPU::handleBitwise(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // AND A, [HL]
                 executeALU(0x04, memory.read(getHL()));
+                return 8;
             } else {
                 executeALU(0x04, readReg(src));
+                return 4;
             }
-            return true;
         }
 
         // ==============================
@@ -939,7 +947,7 @@ bool CPU::handleBitwise(uint8_t opcode) {
         // ==============================
         if (opcode == 0xE6) {
             executeALU(0x04, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -948,7 +956,7 @@ bool CPU::handleBitwise(uint8_t opcode) {
         // ==============================
         if (opcode == 0x2F) {
             cpl();
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -959,10 +967,11 @@ bool CPU::handleBitwise(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // OR A, [HL]
                 executeALU(0x06, memory.read(getHL()));
+                return 8;
             } else {
                 executeALU(0x06, readReg(src));
+                return 4;
             }
-            return true;
         }
 
         // ==============================
@@ -971,7 +980,7 @@ bool CPU::handleBitwise(uint8_t opcode) {
         // ==============================
         if (opcode == 0xF6) {
             executeALU(0x06, read8Immediate());
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -982,10 +991,11 @@ bool CPU::handleBitwise(uint8_t opcode) {
             uint8_t src = opcode & 0b111;
             if(src == 0b110){ // XOR A, [HL]
                 executeALU(0x05, memory.read(getHL()));
+                return 8;
             } else {
                 executeALU(0x05, readReg(src));
+                return 4;
             }
-            return true;
         }
 
         // ==============================
@@ -994,289 +1004,22 @@ bool CPU::handleBitwise(uint8_t opcode) {
         // ==============================
         if (opcode == 0xEE) {
             executeALU(0x05, read8Immediate());
-            return true;
+            return 8;
         }
 
-        return false;
+        return 0;
     }
 
-bool CPU::handleBitFlag(uint8_t opcode) {
-        // ==============================
-        // BIT b3, r8
-        // 01 BBB RRR
-        // ==============================
-        if ((opcode & 0b11000111) == 0b01000000) {
-            uint8_t bit = (opcode >> 3) & 0b111;
-            uint8_t src = opcode & 0b111;
-            uint8_t value;
-            if(src == 0b110){ // BIT b3, [HL]
-                value = memory.read(getHL());
-            } else {
-                value = readReg(src);
-            }
-            setZeroFlag((value & (1 << bit)) == 0);
-            setSubtractFlag(false);
-            setHalfCarryFlag(true);
-            return true;
-        }
-        
-        // ==============================
-        // RES b3, r8
-        // 10 BBB RRR
-        // ==============================
-        if ((opcode & 0b11000111) == 0b10000000) {
-            uint8_t bit = (opcode >> 3) & 0b111;
-            uint8_t src = opcode & 0b111;
-            uint8_t value;
-            if(src == 0b110){ // RES b3, [HL]
-                value = memory.read(getHL());
-                value &= ~(1 << bit);
-                memory.write(getHL(), value);
-            } else {
-                value = readReg(src);
-                value &= ~(1 << bit);
-                writeReg(src, value);
-            }
-            return true;
-        }
-
-        // ==============================
-        // SET b3, r8
-        // 11 BBB RRR
-        // ==============================
-        if ((opcode & 0b11000111) == 0b11000000) {
-            uint8_t bit = (opcode >> 3) & 0b111;
-            uint8_t src = opcode & 0b111;
-            uint8_t value;
-            if(src == 0b110){ // SET b3, [HL]
-                value = memory.read(getHL());
-                value |= (1 << bit);
-                memory.write(getHL(), value);
-            } else {
-                value = readReg(src);
-                value |= (1 << bit);
-                writeReg(src, value);
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-bool CPU::handleBitShift(uint8_t opcode) {
-        // ==============================
-        // RL r8
-        // 00010 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00010000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // RL [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x80;
-                value = (value << 1) | (F & 0b00010000 ? 1 : 0);
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                rl(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // RLA
-        // 00010111
-        // ==============================
-        if (opcode == 0x17) {
-            rla();
-            return true;
-        }
-
-        // ==============================
-        // RLC r8
-        // 00000 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00000000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // RLC [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x80;
-                value = (value << 1) | (carry ? 1 : 0);
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);  
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                rlc(reg);
-            }
-            return true;
-        }    
-        
-        // ==============================
-        // RLCA
-        // 00000111
-        // ==============================
-        if (opcode == 0x07) {
-            rlca();
-            return true;
-        }
-
-        // ==============================
-        // RR r8
-        // 00011 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00011000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // RR [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x01;
-                value = (value >> 1) | (carry ? 0x80 : 0);
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                rr(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // RRA
-        // 00011111
-        // ==============================
-        if (opcode == 0x1F) {
-            rra();
-            return true;
-        }
-
-        // ==============================
-        // RRC r8
-        // 00001 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00001000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // RRC [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x01;
-                value = (value >> 1) | (carry ? 0x80 : 0);
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                rrc(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // RRCA
-        // 00001111
-        // ==============================
-        if (opcode == 0x0F) {
-            rrca();
-            return true;
-        }
-
-        // ==============================
-        // SLA r8
-        // 00100 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00100000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // SLA [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x80;
-                value <<= 1;
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                sla(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // SRA r8
-        // 00101 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00101000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // SRA [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x01;
-                value = (value >> 1) | (value & 0x80);
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                sra(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // SRL r8
-        // 00111 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00111000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // SRL [HL]
-                uint8_t value = memory.read(getHL());
-                bool carry = value & 0x01;
-                value >>= 1;
-                memory.write(getHL(), value);
-                setCarryFlag(carry);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                srl(reg);
-            }
-            return true;
-        }
-
-        // ==============================
-        // SWAP r8
-        // 00110 RRR
-        // ==============================
-        if ((opcode & 0b11111000) == 0b00110000) {
-            uint8_t reg = opcode & 0b111;
-            if(reg == 0b110){ // SWAP [HL]
-                uint8_t value = memory.read(getHL());
-                value = (value << 4) | (value >> 4);
-                memory.write(getHL(), value);
-                setCarryFlag(false);
-                setZeroFlag(value == 0);
-                setSubtractFlag(false);
-                setHalfCarryFlag(false);
-            } else {
-                swap(reg);
-            }
-            return true;
-        }
-        return false;
-    }
-
-bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
+int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         // CALL imm16
         // 110 01 101
         // ==============================
         if (opcode == 0xCD) {
-            call();
-            return true;
+            uint16_t addr = read16Immediate();
+            push(PC);
+            jp(addr);
+            return 24;
         }
 
         // ==============================
@@ -1285,8 +1028,13 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if ((opcode & 0b11001111) == 0b11000100) {
             uint8_t condition = (opcode >> 4) & 0b11;
-            call(condition);
-            return true;
+            uint16_t addr = read16Immediate();
+            if(checkCondition(condition)) {
+                push(PC);
+                jp(addr);
+                return 24;
+            }
+            return 12;
         }
 
         // ==============================
@@ -1295,7 +1043,7 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if (opcode == 0xE9) {
             PC = getHL();
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -1304,7 +1052,7 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if (opcode == 0xC3) {
             jp(read16Immediate());
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -1313,8 +1061,12 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if ((opcode & 0b11001111) == 0b11000010) {
             uint8_t condition = (opcode >> 4) & 0b11;
-            jp(condition);
-            return true;
+            uint16_t addr = read16Immediate();
+            if(checkCondition(condition)) {
+                jp(addr);
+                return 16;
+            }
+            return 12;
         }
 
         // ==============================
@@ -1324,7 +1076,7 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         if (opcode == 0x18) {
             int8_t offset = (int8_t)read8Immediate();
             jr(offset);
-            return true;
+            return 12;
         }
 
         // ==============================
@@ -1334,8 +1086,12 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         if ((opcode & 0b11100111) == 0b00100000) {
             uint8_t condition = (opcode >> 3) & 0b11;
             int8_t offset = (int8_t)read8Immediate();
-            jr(condition, offset);
-            return true;
+            
+            if(checkCondition(condition)) {
+                jr(offset);
+                return 12;
+            }
+            return 8; 
         }
 
         // ==============================
@@ -1344,8 +1100,11 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if ((opcode & 0b11001111) == 0b11000000) {
             uint8_t condition = (opcode >> 4) & 0b11;
-            ret(condition);
-            return true;
+            if(checkCondition(condition)) {
+                ret();
+                return 20;
+            }
+            return 8;
         }
 
         // ==============================
@@ -1354,7 +1113,7 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if (opcode == 0xC9) {
             ret();
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -1363,7 +1122,7 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // ==============================
         if (opcode == 0xD9) {
             reti();
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -1373,21 +1132,19 @@ bool CPU::handleJumpAndSubroutine(uint8_t opcode) {
         if ((opcode & 0b11000111) == 0b11000111) {
             uint8_t target = (opcode >> 3) & 0b111;
             rst(target);
-            return true;
+            return 16;
         }
-
-
-        return false;
+        return 0;
     }
 
-bool CPU::handleCarryFlag(uint8_t opcode) {
+int CPU::handleCarryFlag(uint8_t opcode) {
         // ==============================
         // CCF
         // 00111111
         // ==============================
         if (opcode == 0x3F) {
             ccf();
-            return true;
+            return 4;
         }
 
         // ==============================
@@ -1396,13 +1153,13 @@ bool CPU::handleCarryFlag(uint8_t opcode) {
         // ==============================
         if (opcode == 0x37) {
             scf();
-            return true;
+            return 4;
         }
 
-        return false;
+        return 0;
     }
 
-bool CPU::handleStack(uint8_t opcode) {
+int CPU::handleStack(uint8_t opcode) {
         // ==============================
         // ADD SP, imm8
         // 11101000
@@ -1410,7 +1167,7 @@ bool CPU::handleStack(uint8_t opcode) {
         if (opcode == 0xE8) {
             int8_t offset = (int8_t)read8Immediate();
             addSP(offset);
-            return true;
+            return 16;
         }
         
         // ==============================
@@ -1421,7 +1178,7 @@ bool CPU::handleStack(uint8_t opcode) {
             uint16_t addr = read16Immediate();
             memory.write(addr, SP & 0xFF);
             memory.write(addr + 1, SP >> 8);
-            return true;
+            return 20;
         }
 
         // ==============================
@@ -1430,7 +1187,7 @@ bool CPU::handleStack(uint8_t opcode) {
         // ==============================
         if (opcode == 0xF9) {
             SP = getHL();
-            return true;
+            return 8;
         }
 
         // ==============================
@@ -1446,7 +1203,7 @@ bool CPU::handleStack(uint8_t opcode) {
             setSubtractFlag((F & 0x40) != 0);
             setHalfCarryFlag((F & 0x20) != 0);
             setCarryFlag((F & 0x10) != 0);
-            return true;
+            return 12;
         }
 
         // ==============================
@@ -1458,7 +1215,7 @@ bool CPU::handleStack(uint8_t opcode) {
             uint8_t low = memory.read(SP++);
             uint8_t high = memory.read(SP++);
             writeReg16(reg, (high << 8) | low);
-            return true;
+            return 12;
         }
 
         // ==============================
@@ -1468,7 +1225,7 @@ bool CPU::handleStack(uint8_t opcode) {
         if (opcode == 0xF5) {
             memory.write(--SP, A);
             memory.write(--SP, F & 0xF0);
-            return true;
+            return 16;
         }
 
         // ==============================
@@ -1480,33 +1237,166 @@ bool CPU::handleStack(uint8_t opcode) {
             uint16_t value = readReg16(reg);
             memory.write(--SP, value >> 8);
             memory.write(--SP, value & 0xFF);
-            return true;
+            return 16;
         }
 
-        return false;
+        return 0;
     }
 
-void CPU::executeOpcode(uint8_t opcode) {
-        if (handleLoad(opcode)) return;
-        if (handleArithmetic8Bit(opcode)) return;
-        if (handleArithmetic16Bit(opcode)) return;
-        if (handleBitwise(opcode)) return;
-        if (handleBitFlag(opcode)) return;
-        if (handleBitShift(opcode)) return;
-        if (handleJumpAndSubroutine(opcode)) return;
-        if (handleCarryFlag(opcode)) return;
-        if (handleStack(opcode)) return;
+int CPU::executeCBOpcode(uint8_t opcode) {
+    uint8_t reg = opcode & 0b111;                
+    uint8_t operation = (opcode >> 3) & 0b111;
+    uint8_t group = (opcode >> 6) & 0b11;
+
+    // ==========================================
+    // Group 00: Rotate and Shift
+    // ==========================================
+    if (group == 0b00) {
+        if(reg == 0b110){ // Memory address pointed by HL
+            uint8_t value = memory.read(getHL());
+            bool carry;
+            switch(operation) {
+                case 0: // RLC
+                    carry = value & 0x80;
+                    value = (value << 1) | (carry ? 1 : 0);
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 1: // RRC
+                    carry = value & 0x01;
+                    value = (value >> 1) | (carry ? 0x80 : 0);
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 2: // RL
+                    carry = value & 0x80;
+                    value = (value << 1) | (F & 0b00010000 ? 1 : 0);
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 3: // RR
+                    carry = value & 0x01;
+                    value = (value >> 1) | (F & 0b00010000 ? 0x80 : 0);
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 4: // SLA
+                    carry = value & 0x80;
+                    value <<= 1;
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 5: // SRA
+                    carry = value & 0x01;
+                    value = (value >> 1) | (value & 0x80);
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 6: // SWAP
+                    value = (value << 4) | (value >> 4);
+                    setCarryFlag(false); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+                case 7: // SRL
+                    carry = value & 0x01;
+                    value >>= 1;
+                    setCarryFlag(carry); setZeroFlag(value == 0); setSubtractFlag(false); setHalfCarryFlag(false);
+                    break;
+            }
+            memory.write(getHL(), value);
+            return 16; // 4 (CB) + 4 (fetch) + 4 (read) + 4 (write)
+        } else {
+            // Register r8
+            switch(operation) {
+                case 0: rlc(reg); break;
+                case 1: rrc(reg); break;
+                case 2: rl(reg); break;
+                case 3: rr(reg); break;
+                case 4: sla(reg); break;
+                case 5: sra(reg); break;
+                case 6: swap(reg); break;
+                case 7: srl(reg); break;
+            }
+            return 8; // 4 (CB) + 4 (fetch)
+        }
+    }
+    
+    // ==========================================
+    // Group 01: BIT (Test Bit)
+    // ==========================================
+    else if (group == 0b01) {
+        uint8_t bit = operation;
+        uint8_t value;
+        int cycles;
+        
+        if(reg == 0b110){
+            value = memory.read(getHL());
+            cycles = 12; // 4 (CB) + 4 (fetch) + 4 (load).
+        } else {
+            value = readReg(reg);
+            cycles = 8;
+        }
+        
+        setZeroFlag((value & (1 << bit)) == 0);
+        setSubtractFlag(false);
+        setHalfCarryFlag(true);
+        return cycles;
+    }
+    
+    // ==========================================
+    // Group 10: RES (Reset Bit to 0)
+    // ==========================================
+    else if (group == 0b10) {
+        uint8_t bit = operation;
+        if(reg == 0b110){
+            uint8_t value = memory.read(getHL());
+            value &= ~(1 << bit);
+            memory.write(getHL(), value);
+            return 16;
+        } else {
+            uint8_t value = readReg(reg);
+            value &= ~(1 << bit);
+            writeReg(reg, value);
+            return 8;
+        }
+    }
+    
+    // ==========================================
+    // Group 11: SET (Set Bit to 1)
+    // ==========================================
+    else if (group == 0b11) {
+        uint8_t bit = operation;
+        if(reg == 0b110){
+            uint8_t value = memory.read(getHL());
+            value |= (1 << bit);
+            memory.write(getHL(), value);
+            return 16;
+        } else {
+            uint8_t value = readReg(reg);
+            value |= (1 << bit);
+            writeReg(reg, value);
+            return 8;
+        }
+    }
+
+    return 0;
+}
+
+int CPU::executeOpcode(uint8_t opcode) {
+    int cycles = 0;
+
+        if (cycles = handleLoad(opcode)) return cycles;
+        if (cycles = handleArithmetic8Bit(opcode)) return cycles;
+        if (cycles = handleArithmetic16Bit(opcode)) return cycles;
+        if (cycles = handleBitwise(opcode)) return cycles;
+        if (cycles = handleJumpAndSubroutine(opcode)) return cycles;
+        if (cycles = handleCarryFlag(opcode)) return cycles;
+        if (cycles = handleStack(opcode)) return cycles;
 
         // ==============================
         // Misc / Unique Instructions
         // ==============================
         switch(opcode) {
-            case 0x00: /* NOP */ break;
-            case 0x27: daa(); break;
-            case 0x10: stopCPU(); break;
-            case 0xF3: di(); break;
-            case 0xB3: ei(); break;
+            case 0x00: /* NOP */ return 4;
+            case 0x27: daa(); return 4;
+            case 0x10: stopCPU(); return 4;
+            case 0xF3: di(); return 4;
+            case 0xB3: ei(); return 4;
             default: throw "Unimplemented opcode: " + std::to_string(opcode);
         }
+        return 0;
     }
 

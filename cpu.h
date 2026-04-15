@@ -6,14 +6,14 @@
 
 struct CPU{
     // 8-bit registers
-    uint8_t A, F;
-    uint8_t B, C;
-    uint8_t D, E;
-    uint8_t H, L;
+    uint8_t A = 0x01, F = 0xB0;
+    uint8_t B = 0x00, C = 0x13;
+    uint8_t D = 0x00, E = 0xD8;
+    uint8_t H = 0x01, L = 0x4D;
     // 16-bit registers
     uint16_t SP = 0xFFFE;
     // Stack Pointer starts at top of memory
-    uint16_t PC = 0x0000;
+    uint16_t PC = 0x0100;
     // Internal control flags
     bool IME = false;
     // Interrupt Master Enable
@@ -57,7 +57,7 @@ struct CPU{
 
     void handleInterrupt();
 
-    void step();
+    int step();
 
     uint16_t read16Immediate();
 
@@ -103,15 +103,11 @@ struct CPU{
 
     void jr(int8_t offset);
 
-    void jr(uint8_t condition, int8_t offset);
-
     void ret(uint8_t condition);
 
     void ret();
 
     void reti();
-
-    void jp(uint8_t condition);
 
     void jp(uint16_t addr);
 
@@ -169,24 +165,22 @@ struct CPU{
 
     void executeALU(uint8_t operation, uint8_t operand);
 
-    bool handleLoad(uint8_t opcode);
+    int handleLoad(uint8_t opcode);
 
-    bool handleArithmetic8Bit(uint8_t opcode);
+    int handleArithmetic8Bit(uint8_t opcode);
 
-    bool handleArithmetic16Bit(uint8_t opcode);
+    int handleArithmetic16Bit(uint8_t opcode);
 
-    bool handleBitwise(uint8_t opcode);
+    int handleBitwise(uint8_t opcode);
 
-    bool handleBitFlag(uint8_t opcode);
+    int handleJumpAndSubroutine(uint8_t opcode);
 
-    bool handleBitShift(uint8_t opcode);
+    int handleCarryFlag(uint8_t opcode);
 
-    bool handleJumpAndSubroutine(uint8_t opcode);
+    int handleStack(uint8_t opcode);
 
-    bool handleCarryFlag(uint8_t opcode);
+    int executeCBOpcode(uint8_t opcode);
 
-    bool handleStack(uint8_t opcode);
-
-    void executeOpcode(uint8_t opcode);
+    int executeOpcode(uint8_t opcode);
 
 };
