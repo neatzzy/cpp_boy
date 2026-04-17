@@ -6,23 +6,23 @@
 
 struct CPU{
     // 8-bit registers
-    uint8_t A = 0x01, F = 0xB0;
-    uint8_t B = 0x00, C = 0x13;
-    uint8_t D = 0x00, E = 0xD8;
-    uint8_t H = 0x01, L = 0x4D;
+    uint8_t A, F;
+    uint8_t B, C;
+    uint8_t D, E;
+    uint8_t H, L;
     // 16-bit registers
-    uint16_t SP = 0xFFFE;
+    uint16_t SP;
     // Stack Pointer starts at top of memory
-    uint16_t PC = 0x0000;
+    uint16_t PC;
     // Internal control flags
-    bool IME = false;
+    bool IME;
     // Interrupt Master Enable
-    bool enableIME_next = false;
+    bool enableIME_next;
     // Used to delay enabling IME until after the next instruction
 
-    bool halted = false;
+    bool halted;
     // Indicates if the CPU is halted
-    bool stopped = false;
+    bool stopped;
     // Indicates if the CPU is stopped
 
     // Memory reference

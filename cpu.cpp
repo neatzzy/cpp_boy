@@ -1,7 +1,25 @@
 #include "cpu.h"
 #include <stdexcept>
 
-CPU::CPU(Memory& mem) : memory(mem) {}
+CPU::CPU(Memory& mem) : memory(mem) {
+    A = 0x01, F = 0xB0;
+    B = 0x00, C = 0x13;
+    D = 0x00, E = 0xD8;
+    H = 0x01, L = 0x4D;
+    // 16-bit registers
+    SP = 0xFFFE;
+    // Stack Pointer starts at top of memory
+    PC = 0x0000;
+    // Internal control flags
+    IME = false;
+    // Interrupt Master Enable
+    enableIME_next = false;
+    // Used to delay enabling IME until after the next instruction
+
+    halted = false;
+    // Indicates if the CPU is halted
+    stopped = false;
+}
 
 void CPU::dumpRegisters() {
         printf("Instruction at PC: %02X\n", memory.read(PC));
@@ -9,12 +27,15 @@ void CPU::dumpRegisters() {
     }
 
 void CPU::push(uint16_t value) {
-        memory.push(value, SP);
-    }
+    memory.write(--SP, value >> 8);
+    memory.write(--SP, value & 0xFF);
+}
 
 uint16_t CPU::pop() {
-        return memory.pop(SP);
-    }
+    uint8_t low = memory.read(SP++);
+    uint8_t high = memory.read(SP++);
+    return (high << 8) | low;
+}
 
 void CPU::setCarryFlag(bool value) {
         if(value) {
@@ -76,25 +97,23 @@ bool CPU::interruptPending() {
     }
 
 void CPU::handleInterrupt() {
-        uint8_t IF = memory.read(0xFF0F); // Interrupt Flag
-        uint8_t IE = memory.read(0xFFFF); // Interrupt Enable
+    uint8_t IF = memory.read_direct(0xFF0F); 
+    uint8_t IE = memory.read_direct(0xFFFF); 
 
-        for (int i = 0; i < 5; i++) {
-            if ((IF & IE) & (1 << i)) {
-                // Clear the interrupt flag for this interrupt
-                memory.write(0xFF0F, IF & ~(1 << i));
+    for (int i = 0; i < 5; i++) {
+        if ((IF & IE) & (1 << i)) {
+            IME = false; // Desativa IME imediatamente
+            
+            // Limpa APENAS o bit da interrupção que vamos atender
+            IF &= ~(1 << i);
+            memory.write_direct(0xFF0F, IF);
 
-                // Push PC onto stack
-                push(PC);
-
-                // Jump to the appropriate interrupt vector
-                PC = 0x40 + i * 8;
-
-                IME = false; // Disable further interrupts until re-enabled by EI
-                break;
-            }
+            push(PC); // Salva onde estávamos
+            PC = 0x40 + (i * 8); // Salta para o vetor
+            return; 
         }
     }
+}
 
 int CPU::step() {
     int cycles = 0;
@@ -395,48 +414,47 @@ void CPU::call() {
     }
 
 void CPU::rst(uint8_t target) {
-        // Call to RST vector
-        call(target * 8);
-    }
+    push(PC); 
+    PC = target * 8; 
+}
 
 void CPU::addA(uint8_t operand) {
-        // Add operand to A
-            uint8_t result = A + operand;
-            setCarryFlag(result > 0xFF);
-            setHalfCarryFlag(((A & 0xF) + (operand & 0xF)) > 0xF);
-            setZeroFlag(result == 0);
-            setSubtractFlag(false);
-            A = result;
-    }
+    uint16_t result = A + operand;
+    setCarryFlag(result > 0xFF);
+    setHalfCarryFlag(((A & 0xF) + (operand & 0xF)) > 0xF);
+    setZeroFlag((result & 0xFF) == 0);
+    setSubtractFlag(false);
+    A = result & 0xFF;
+}
 
 void CPU::adcA(uint8_t operand) {
-        // Add operand and carry flag to A
-        uint8_t result = A + operand + (F & 0b00010000 ? 1 : 0);
-        setCarryFlag(result > 0xFF);
-        setHalfCarryFlag(((A & 0xF) + (operand & 0xF) + (F & 0b00010000 ? 1 : 0)) > 0xF);
-        setZeroFlag(result == 0);
-        setSubtractFlag(false);
-        A = result;
-    }
+    uint8_t carry = (F & 0b00010000) ? 1 : 0;
+    uint16_t result = A + operand + carry;
+    setCarryFlag(result > 0xFF);
+    setHalfCarryFlag(((A & 0xF) + (operand & 0xF) + carry) > 0xF);
+    setZeroFlag((result & 0xFF) == 0);
+    setSubtractFlag(false);
+    A = result & 0xFF;
+}
 
 void CPU::subA(uint8_t operand) {
         // Subtract operand from A
-        uint8_t result = A - operand;
+        uint16_t result = A - operand;
         setCarryFlag(result > A);
         setHalfCarryFlag((A & 0xF) < (operand & 0xF));
-        setZeroFlag(result == 0);
+        setZeroFlag((result & 0xFF) == 0);
         setSubtractFlag(true);
-        A = result;
+        A = result & 0xFF;
     }
 
 void CPU::sbcA(uint8_t operand) {
         // Subtract operand and carry flag from A
-        uint8_t result = A - operand - (F & 0b00010000 ? 1 : 0);
+        uint16_t result = A - operand - (F & 0b00010000 ? 1 : 0);
         setCarryFlag(result > A);
         setHalfCarryFlag((A & 0xF) < (operand & 0xF) + (F & 0b00010000 ? 1 : 0));
-        setZeroFlag(result == 0);
+        setZeroFlag((result & 0xFF) == 0);
         setSubtractFlag(true);
-        A = result;
+        A = result & 0xFF;
     }
 
 void CPU::andA(uint8_t operand) {
@@ -634,13 +652,19 @@ int CPU::handleLoad(uint8_t opcode) {
         // 01 DDD SSS
         // ==============================
         if ((opcode & 0b11000000) == 0b01000000) {
-            if (opcode == 0x76) { // HALT
+            if (opcode == 0x76) { // LD (HL), (HL) is not a valid instruction, it should be treated as HALT
                 haltCPU();
                 return 4;
             }
+            
             uint8_t dest = (opcode >> 3) & 0b111;
             uint8_t src  = opcode & 0b111;
             writeReg(dest, readReg(src));
+            
+
+            if (dest == 6 || src == 6) {
+                return 8;
+            }
             return 4;
         }
 
@@ -759,9 +783,10 @@ int CPU::handleArithmetic8Bit(uint8_t opcode) {
             if(src == 0b110){ // ADC A, [HL]
                 executeALU(0x01, memory.read(getHL()));
                 return 8;
-            } else 
-            executeALU(0x01, readReg(src));
-            return 4;
+            } else{
+                executeALU(0x01, readReg(src));
+                return 4;
+            }
         }
 
         // ==============================
@@ -1038,7 +1063,7 @@ int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // CALL cond, imm16
         // 110 CC 100
         // ==============================
-        if ((opcode & 0b11001111) == 0b11000100) {
+        if ((opcode & 0b11100111) == 0b11000100) {
             uint8_t condition = (opcode >> 3) & 0b11;
             uint16_t addr = read16Immediate();
             if(checkCondition(condition)) {
@@ -1071,7 +1096,7 @@ int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // JP cond, imm16
         // 110 CC 010
         // ==============================
-        if ((opcode & 0b11001111) == 0b11000010) {
+        if ((opcode & 0b11100111) == 0b11000010) {
             uint8_t condition = (opcode >> 3) & 0b11;
             uint16_t addr = read16Immediate();
             if(checkCondition(condition)) {

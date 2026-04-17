@@ -31,6 +31,11 @@ public:
     uint8_t readRegister(uint16_t addr);
     void writeRegister(uint16_t addr, uint8_t value);
 
+    // Method to render the current scanline
+    void renderScanline();
+    void renderBackground();
+    uint32_t getColor(uint8_t color_id, uint16_t palette_addr);
+
     // PPU Core
     void tick(int cycles);
 };

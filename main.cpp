@@ -46,14 +46,23 @@ int main(int argc, char** argv) {
 
         std::cout << "Emulator started! Press ESC to exit.\n";
 
+        const int MAX_CYCLES_PER_FRAME = 70224;
+
         while (running) {
-            while (!ppu.frame_ready) {
+            int cycles_this_frame = 0;
+
+            while (cycles_this_frame < MAX_CYCLES_PER_FRAME) {
                 int cycles = cpu.step();
                 timer.tick(cycles);
                 ppu.tick(cycles);
+                
+                cycles_this_frame += cycles;
             }
 
-            ppu.frame_ready = false;
+            printf("Instruction: %02X | A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X SP: %04X PC: %04X\n", 
+                memory.read(cpu.PC - 1), cpu.A, cpu.F, cpu.B, cpu.C, cpu.D, cpu.E, cpu.H, cpu.L, cpu.SP, cpu.PC);
+
+            ppu.frame_ready = false; 
 
             SDL_UpdateTexture(texture, nullptr, ppu.framebuffer, 160 * sizeof(uint32_t));
             SDL_RenderClear(renderer);
@@ -63,10 +72,15 @@ int main(int argc, char** argv) {
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) {
                     running = false;
+                } 
+                else if (event.type == SDL_KEYDOWN) {
+                    if (event.key.keysym.sym == SDLK_ESCAPE) {
+                        running = false;
+                    }
                 }
             }
         }
-            SDL_DestroyTexture(texture);
+        SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();

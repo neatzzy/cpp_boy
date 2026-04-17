@@ -12,6 +12,8 @@ public:
 
     std::vector<uint8_t> ram = std::vector<uint8_t>(65536, 0);
 
+    Memory();
+
     void loadBIOS(const std::string& path);
     uint8_t read(uint16_t addr);
     void write(uint16_t addr, uint8_t value);

@@ -5,6 +5,12 @@
 #include <stdexcept>
 #include <iostream>
 
+Memory::Memory() {
+    ram[0xFF40] = 0x91; // Turn on LCD, use BG and Window, no sprites
+    ram[0xFF47] = 0xFC; // Default palette with all colors enabled
+    ram[0xFF41] = 0x85; // STAT: Enable VBlank interrupt, use mode 1 for OAM search
+}
+
 void Memory::loadBIOS(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
@@ -14,11 +20,13 @@ void Memory::loadBIOS(const std::string& path) {
 }
 
 uint8_t Memory::read(uint16_t addr) {
-    // If the address is in the cartridge ROM area, delegate to the cartridge
     if(addr < 0x8000){
         if (cart) return cart->read(addr); 
-        return 0xFF; // If no cartridge is loaded, return 0xFF for unmapped reads
+        return 0xFF;
     }
+
+    if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
+    if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
 
     return ram[addr];
 }
@@ -29,19 +37,18 @@ void Memory::write(uint16_t addr, uint8_t value) {
         return;
     }
 
-    // DEBUG
-    if (addr == 0xFF02 && value == 0x81) {
-        char c = (char)ram[0xFF01];   // Read the character from the SB register
-        std::cout << c << std::flush; // Print immediately to the terminal
-        // We don't return here. We let the write of 0x81 flow to RAM
-        // because some tests read the value back to know the state.
-    }
-
     if(addr < 0x8000){
         // Delegate writes to the cartridge if the address is in the ROM area. Most cartridges won't actually write to this area, but some might have special behavior (e.g., for bank switching).
         if (cart) cart->write(addr, value);
         return;
     }
+
+    if (addr == 0xFF46) {
+    uint16_t source = value << 8;
+    for (int i = 0; i < 160; i++) {
+        ppu->writeOAM(0xFE00 + i, read(source + i));
+    }
+}
 
     if (addr >= 0x8000 && addr <= 0x9FFF) { ppu->writeVRAM(addr, value); return; }
     if (addr >= 0xFE00 && addr <= 0xFE9F) { ppu->writeOAM(addr, value); return; }
