@@ -1,14 +1,16 @@
 #pragma once
-
+#include <vector>
 #include <cstdint>
 #include <string>
-#include "cartridge.h"
 
+class Cartridge;
+class PPU;
 class Memory {
 public:
-    std::vector<uint8_t> ram = std::vector<uint8_t>(65536, 0);
+    Cartridge* cart = nullptr;
+    PPU* ppu = nullptr;
 
-    Cartridge* cart;
+    std::vector<uint8_t> ram = std::vector<uint8_t>(65536, 0);
 
     void loadBIOS(const std::string& path);
     uint8_t read(uint16_t addr);
@@ -19,4 +21,5 @@ public:
     uint16_t pop(uint16_t& SP);
     void write_direct(uint16_t addr, uint8_t value){ram[addr] = value;}
     void requestInterrupt(uint8_t interrupt_bit);
+    uint8_t read_direct(uint16_t addr);
 };

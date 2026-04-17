@@ -734,6 +734,18 @@ int CPU::handleLoad(uint8_t opcode) {
             return 12;
         }
 
+        // ==============================
+        // LD A, [r16]
+        // 00 RR 1010
+        // ==============================
+        if ((opcode & 0b11001111) == 0b00001010) {
+        uint8_t reg = (opcode >> 4) & 0b11; 
+        
+        A = memory.read(readReg16(reg));
+        
+        return 8;
+    }
+
         return 0;
     }
 
@@ -1027,7 +1039,7 @@ int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // 110 CC 100
         // ==============================
         if ((opcode & 0b11001111) == 0b11000100) {
-            uint8_t condition = (opcode >> 4) & 0b11;
+            uint8_t condition = (opcode >> 3) & 0b11;
             uint16_t addr = read16Immediate();
             if(checkCondition(condition)) {
                 push(PC);
@@ -1060,7 +1072,7 @@ int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // 110 CC 010
         // ==============================
         if ((opcode & 0b11001111) == 0b11000010) {
-            uint8_t condition = (opcode >> 4) & 0b11;
+            uint8_t condition = (opcode >> 3) & 0b11;
             uint16_t addr = read16Immediate();
             if(checkCondition(condition)) {
                 jp(addr);
@@ -1098,8 +1110,8 @@ int CPU::handleJumpAndSubroutine(uint8_t opcode) {
         // RET cond
         // 110 CC 000
         // ==============================
-        if ((opcode & 0b11001111) == 0b11000000) {
-            uint8_t condition = (opcode >> 4) & 0b11;
+        if ((opcode & 0b11100111) == 0b11000000) {
+            uint8_t condition = (opcode >> 3) & 0b11;
             if(checkCondition(condition)) {
                 ret();
                 return 20;
@@ -1188,6 +1200,23 @@ int CPU::handleStack(uint8_t opcode) {
         if (opcode == 0xF9) {
             SP = getHL();
             return 8;
+        }
+
+        // ==============================
+        // LD HL, SP+imm8
+        // 11111000
+        // ==============================
+        if (opcode == 0xF8) {
+            int8_t offset = (int8_t)read8Immediate();
+            uint16_t result = SP + offset;
+            
+            setCarryFlag((SP & 0xFF) + (offset & 0xFF) > 0xFF);
+            setHalfCarryFlag((SP & 0xF) + (offset & 0xF) > 0xF);
+            setZeroFlag(false);
+            setSubtractFlag(false);
+            
+            writeHL(result);
+            return 12;
         }
 
         // ==============================
@@ -1378,25 +1407,33 @@ int CPU::executeCBOpcode(uint8_t opcode) {
 int CPU::executeOpcode(uint8_t opcode) {
     int cycles = 0;
 
-        if (cycles = handleLoad(opcode)) return cycles;
-        if (cycles = handleArithmetic8Bit(opcode)) return cycles;
-        if (cycles = handleArithmetic16Bit(opcode)) return cycles;
-        if (cycles = handleBitwise(opcode)) return cycles;
-        if (cycles = handleJumpAndSubroutine(opcode)) return cycles;
-        if (cycles = handleCarryFlag(opcode)) return cycles;
-        if (cycles = handleStack(opcode)) return cycles;
+    if ((cycles = handleLoad(opcode))) return cycles;
+    if ((cycles = handleArithmetic8Bit(opcode))) return cycles;
+    if ((cycles = handleArithmetic16Bit(opcode))) return cycles;
+    if ((cycles = handleJumpAndSubroutine(opcode))) return cycles;
+    if ((cycles = handleBitwise(opcode))) return cycles;
+    if ((cycles = handleCarryFlag(opcode))) return cycles;
+    if ((cycles = handleStack(opcode))) return cycles;
 
-        // ==============================
-        // Misc / Unique Instructions
-        // ==============================
-        switch(opcode) {
-            case 0x00: /* NOP */ return 4;
-            case 0x27: daa(); return 4;
-            case 0x10: stopCPU(); return 4;
-            case 0xF3: di(); return 4;
-            case 0xB3: ei(); return 4;
-            default: throw "Unimplemented opcode: " + std::to_string(opcode);
-        }
-        return 0;
+    // ==============================
+    // Rotate and Shift A
+    // ==============================
+    if (opcode == 0x07) { rlca(); return 4; }
+    if (opcode == 0x0F) { rrca(); return 4; }
+    if (opcode == 0x17) { rla();  return 4; }
+    if (opcode == 0x1F) { rra();  return 4; }
+
+    // ==============================
+    // Miscellaneous
+    // ==============================
+    switch(opcode) {
+        case 0x00: return 4; /* NOP */
+        case 0x27: daa(); return 4;
+        case 0x10: stopCPU(); return 4;
+        case 0xF3: di(); return 4;
+        case 0xFB: ei(); return 4;
+        default: throw std::string("Unimplemented opcode: ") + std::to_string(opcode);
     }
+    return 0;
+}
 

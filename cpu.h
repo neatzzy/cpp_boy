@@ -13,7 +13,7 @@ struct CPU{
     // 16-bit registers
     uint16_t SP = 0xFFFE;
     // Stack Pointer starts at top of memory
-    uint16_t PC = 0x0100;
+    uint16_t PC = 0x0000;
     // Internal control flags
     bool IME = false;
     // Interrupt Master Enable
