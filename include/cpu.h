@@ -16,9 +16,8 @@ struct CPU{
     uint16_t PC;
     // Internal control flags
     bool IME;
-    // Interrupt Master Enable
     bool enableIME_next;
-    // Used to delay enabling IME until after the next instruction
+    bool pendingIME;
 
     bool halted;
     // Indicates if the CPU is halted

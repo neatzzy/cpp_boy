@@ -8,13 +8,10 @@ CPU::CPU(Memory& mem) : memory(mem) {
     H = 0x01, L = 0x4D;
     // 16-bit registers
     SP = 0xFFFE;
-    // Stack Pointer starts at top of memory
-    PC = 0x0000;
-    // Internal control flags
+    PC = 0x0100; // Skip BIOS — entry point post-BIOS
     IME = false;
-    // Interrupt Master Enable
     enableIME_next = false;
-    // Used to delay enabling IME until after the next instruction
+    pendingIME = false;
 
     halted = false;
     // Indicates if the CPU is halted
@@ -119,13 +116,19 @@ int CPU::step() {
     int cycles = 0;
 
     if(halted) {
-        if(interruptPending()) halted = false;
-        else return 4;
+        if(interruptPending()) {
+            halted = false;
+            if(IME) {
+                handleInterrupt();
+                return 20;
+            }
+        } else {
+            return 4;
+        }
     }
 
     uint8_t opcode = memory.read(PC++);
 
-    // Interpret CB-prefixed opcodes
     if (opcode == 0xCB) {
         uint8_t cb_opcode = memory.read(PC++);
         cycles += executeCBOpcode(cb_opcode);
@@ -133,14 +136,19 @@ int CPU::step() {
         cycles += executeOpcode(opcode);
     }
 
-    if(enableIME_next) {
+    // Two-stage EI delay: EI sets enableIME_next → pendingIME → IME
+    if(pendingIME) {
         IME = true;
+        pendingIME = false;
+    }
+    if(enableIME_next) {
+        pendingIME = true;
         enableIME_next = false;
     }
 
     if(IME && interruptPending()) {
         handleInterrupt();
-        cycles += 20; // 20 cycles for interrupt handling
+        cycles += 20;
     }
 
     return cycles;
@@ -188,41 +196,37 @@ void CPU::addHL(uint16_t value) {
     }
 
 void CPU::rlca() {
-        // Rotate A left with carry
         bool carry = A & 0x80;
         A = (A << 1) | (carry ? 1 : 0);
         setCarryFlag(carry);
-        setZeroFlag(A == 0);
+        setZeroFlag(false);
         setSubtractFlag(false);
         setHalfCarryFlag(false);
     }
 
 void CPU::rrca() {
-        // Rotate A right with carry
         bool carry = A & 0x01;
         A = (A >> 1) | (carry ? 0x80 : 0);
         setCarryFlag(carry);
-        setZeroFlag(A == 0);
+        setZeroFlag(false);
         setSubtractFlag(false);
         setHalfCarryFlag(false);
     }
 
 void CPU::rla() {
-        // Rotate A left
         bool carry = A & 0x80;
         A = (A << 1) | (F & 0b00010000 ? 1 : 0);
         setCarryFlag(carry);
-        setZeroFlag(A == 0);
+        setZeroFlag(false);
         setSubtractFlag(false);
         setHalfCarryFlag(false);
     }
 
 void CPU::rra() {
-        // Rotate A right
         bool carry = A & 0x01;
         A = (A >> 1) | (F & 0b00010000 ? 0x80 : 0);
         setCarryFlag(carry);
-        setZeroFlag(A == 0);
+        setZeroFlag(false);
         setSubtractFlag(false);
         setHalfCarryFlag(false);
     }
@@ -252,12 +256,12 @@ void CPU::rlc(uint8_t reg) {
     }
 
 void CPU::rr(uint8_t reg) {
-        // Rotate r8 right
         uint8_t value = readReg(reg);
-        bool carry = value & 0x01;
-        value = (value >> 1) | (carry ? 0x80 : 0);
+        bool oldCarry = (F & 0b00010000) != 0;
+        bool newCarry = value & 0x01;
+        value = (value >> 1) | (oldCarry ? 0x80 : 0);
         writeReg(reg, value);
-        setCarryFlag(carry);
+        setCarryFlag(newCarry);
         setZeroFlag(value == 0);
         setSubtractFlag(false);
         setHalfCarryFlag(false);
@@ -628,8 +632,17 @@ int CPU::handleLoad(uint8_t opcode) {
         }
 
         // ==============================
+        // HALT
+        // 01 110 110
+        // ==============================
+        if (opcode == 0x76) {
+            haltCPU();
+            return 4;
+        }
+
+        // ==============================
         // LD [HL], r8
-        // 00 110 RRR
+        // 01 110 RRR
         // ==============================
         if ((opcode & 0b11111000) == 0b01110000) {
             uint8_t src = opcode & 0b111;
@@ -642,11 +655,6 @@ int CPU::handleLoad(uint8_t opcode) {
         // 01 DDD SSS
         // ==============================
         if ((opcode & 0b11000000) == 0b01000000) {
-            if (opcode == 0x76) { // LD (HL), (HL) is not a valid instruction, it should be treated as HALT
-                haltCPU();
-                return 4;
-            }
-            
             uint8_t dest = (opcode >> 3) & 0b111;
             uint8_t src  = opcode & 0b111;
             writeReg(dest, readReg(src));
@@ -665,7 +673,7 @@ int CPU::handleLoad(uint8_t opcode) {
         if ((opcode & 0b11000111) == 0b00000110) {
             uint8_t dest = (opcode >> 3) & 0b111;
             writeReg(dest, read8Immediate());
-            return 8;
+            return dest == 6 ? 12 : 8; // LD [HL], imm8 takes 12 cycles
         }
 
         // ==============================
