@@ -120,26 +120,30 @@ void PPU::renderBackground() {
     uint8_t ly = memory.read_direct(0xFF44);
 
     uint16_t tileMap = (lcdc & 0b00001000) ? 0x9C00 : 0x9800;
-    
+
     uint16_t tileData = (lcdc & 0b00010000) ? 0x8000 : 0x8800;
     bool unsig = (lcdc & 0b00010000) != 0;
 
     uint8_t yPos = scrollY + ly;
-    
+
     uint16_t tileRow = ((uint8_t)(yPos / 8)) * 32;
 
     for (int pixel = 0; pixel < 160; pixel++) {
         uint8_t xPos = pixel + scrollX;
-        
+
         uint16_t tileCol = (xPos / 8);
 
         int16_t tileNum;
         uint16_t tileAddress = tileMap + tileRow + tileCol;
-        
-        if (unsig) {
-            tileNum = (uint8_t)readVRAM(tileAddress);
+
+        if (tileAddress >= 0x8000 && tileAddress <= 0x9FFF) {
+            if (unsig) {
+                tileNum = (uint8_t)readVRAM(tileAddress);
+            } else {
+                tileNum = (int8_t)readVRAM(tileAddress);
+            }
         } else {
-            tileNum = (int8_t)readVRAM(tileAddress);
+            tileNum = 0;
         }
 
         uint16_t tileLocation = tileData;
@@ -152,8 +156,11 @@ void PPU::renderBackground() {
         uint8_t line = yPos % 8;
         line *= 2;
 
-        uint8_t data1 = readVRAM(tileLocation + line);
-        uint8_t data2 = readVRAM(tileLocation + line + 1);
+        uint8_t data1 = 0, data2 = 0;
+        if (tileLocation >= 0x8000 && tileLocation + line + 1 <= 0x9FFF) {
+            data1 = readVRAM(tileLocation + line);
+            data2 = readVRAM(tileLocation + line + 1);
+        }
 
         int colorBit = 7 - (xPos % 8);
 
@@ -161,7 +168,7 @@ void PPU::renderBackground() {
         colorNum |= ((data1 >> colorBit) & 1);
 
         uint32_t finalColor = getColor(colorNum, 0xFF47);
-        
+
         framebuffer[ly * 160 + pixel] = finalColor;
     }
 }

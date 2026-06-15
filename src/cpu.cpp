@@ -324,23 +324,24 @@ void CPU::swap(uint8_t reg) {
     }
 
 void CPU::daa() {
-        // Decimal Adjust Accumulator
         uint8_t correction = 0;
-        if ((F & 0b01000000) || (A & 0x0F) > 9) {
-            correction |= 0x06;
-        }
-        if ((F & 0b00010000) || A > 0x99) {
-            correction |= 0x60;
-        }
-        if (F & 0b01000000) {
-            subA(correction);
+        bool n = F & 0b01000000; // subtract flag
+        bool h = F & 0b00100000; // half carry flag
+        bool c = F & 0b00010000; // carry flag
+
+        if (!n) {
+            if (h || (A & 0x0F) > 9) correction |= 0x06;
+            if (c || A > 0x99)       correction |= 0x60;
+            A += correction;
         } else {
-            addA(correction);
+            if (h) correction |= 0x06;
+            if (c) correction |= 0x60;
+            A -= correction;
         }
+        setCarryFlag(c || correction >= 0x60);
         setZeroFlag(A == 0);
+        setSubtractFlag(n);
         setHalfCarryFlag(false);
-
-
     }
 
 void CPU::cpl() {
@@ -380,8 +381,7 @@ void CPU::ret() {
     }
 
 void CPU::reti() {
-        // Return from interrupt
-        ei(); // Re-enable interrupts
+        IME = true; // Re-enable interrupts immediately (not delayed like EI)
         ret();
     }
 
@@ -638,16 +638,6 @@ int CPU::handleLoad(uint8_t opcode) {
         }
 
         // ==============================
-        // LD r8, [HL]
-        // 0x46, 0x4E, 0x56, 0x5E, 0x66, 0x6E, 0x7E
-        // ==============================
-        if ((opcode & 0b11111000) == 0b01000000) {
-            uint8_t dest = (opcode >> 3) & 0b111;
-            writeReg(dest, memory.read(getHL()));
-            return 8;
-        }
-
-        // ==============================
         // LD r8,r8
         // 01 DDD SSS
         // ==============================
@@ -703,7 +693,7 @@ int CPU::handleLoad(uint8_t opcode) {
         // 11100000
         // ==============================
         if (opcode == 0xE0) {
-            uint8_t addr = 0xFF00 + read8Immediate();
+            uint16_t addr = 0xFF00 + read8Immediate();
             memory.write(addr, A);
             return 12;
         }
