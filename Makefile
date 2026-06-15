@@ -1,21 +1,34 @@
-# Nome do executável
-TARGET = emulator
+TARGET  = emulator
 
-# Compilador e standard de C++
-CXX = g++
+CXX     = g++
 CXXFLAGS = -std=c++23 -Wall
 
-# Caminhos do Homebrew (Apple Silicon)
-INCLUDES = -I/opt/homebrew/include
-LDFLAGS = -L/opt/homebrew/lib -lSDL2
+SDL2_CFLAGS = $(shell pkg-config --cflags sdl2)
+SDL2_LIBS   = $(shell pkg-config --libs sdl2)
 
-# Todos os ficheiros .cpp do seu projeto
-SRCS = main.cpp cpu.cpp memory.cpp cartridge.cpp timer.cpp ppu.cpp
+SRC_DIR   = src
+INC_DIR   = include
+BUILD_DIR = build
 
-# A regra principal
-$(TARGET): $(SRCS)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRCS) -o $(TARGET) $(LDFLAGS)
+SRCS = $(SRC_DIR)/main.cpp \
+       $(SRC_DIR)/cpu.cpp \
+       $(SRC_DIR)/memory.cpp \
+       $(SRC_DIR)/cartridge.cpp \
+       $(SRC_DIR)/timer.cpp \
+       $(SRC_DIR)/ppu.cpp
 
-# Regra para limpar os ficheiros compilados
+OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
+
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(SDL2_LIBS)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(INC_DIR) $(SDL2_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
 clean:
-	rm -f $(TARGET)
+	rm -rf $(BUILD_DIR) $(TARGET)
+
+.PHONY: clean
