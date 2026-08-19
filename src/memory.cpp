@@ -20,6 +20,8 @@ void Memory::loadBIOS(const std::string& path) {
 }
 
 uint8_t Memory::read(uint16_t addr) {
+    if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
+
     if(addr < 0x8000){
         if (cart) return cart->read(addr); 
         return 0xFF;
@@ -32,6 +34,8 @@ uint8_t Memory::read(uint16_t addr) {
 }
 
 void Memory::write(uint16_t addr, uint8_t value) {
+    if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
+
     if(addr == 0xFF04){
         ram[0xFF04] = 0; // Writing to DIV resets it to 0
         return;
