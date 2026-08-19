@@ -23,6 +23,10 @@ struct CPU{
     // Indicates if the CPU is halted
     bool stopped;
     // Indicates if the CPU is stopped
+    bool haltBug;
+    // Set when HALT exits with IME=0 and a pending interrupt: next fetch re-reads PC without incrementing
+    bool locked;
+    // Set when an illegal opcode is executed: CPU freezes permanently, like real hardware
 
     // Memory reference
     Memory& memory;

@@ -16,6 +16,8 @@ CPU::CPU(Memory& mem) : memory(mem) {
     halted = false;
     // Indicates if the CPU is halted
     stopped = false;
+    haltBug = false;
+    locked = false;
 }
 
 void CPU::dumpRegisters() {
@@ -77,20 +79,25 @@ void CPU::ei() {
     }
 
 void CPU::haltCPU() {
-        // Implementation to halt the CPU
-        halted = true;
+        if (!IME && interruptPending()) {
+            // HALT bug: interrupt already pending with IME=0 at HALT time —
+            // CPU doesn't actually halt, next fetch re-reads the same byte
+            haltBug = true;
+        } else {
+            halted = true;
+        }
     }
 
 void CPU::stopCPU() {
-        // Implementation to stop the CPU
         stopped = true;
+        memory.write(0xFF04, 0); // STOP resets the divider, like on real hardware
     }
 
 bool CPU::interruptPending() {
         uint8_t IF = memory.read(0xFF0F); // Interrupt Flag
         uint8_t IE = memory.read(0xFFFF); // Interrupt Enable
 
-        return (IF & IE) != 0; // Check if any enabled interrupt is pending
+        return (IF & IE & 0x1F) != 0; // Only 5 interrupt bits are real; upper bits are garbage/open-bus
     }
 
 void CPU::handleInterrupt() {
@@ -115,6 +122,9 @@ void CPU::handleInterrupt() {
 int CPU::step() {
     int cycles = 0;
 
+    if (locked) return 4;
+    if (stopped) return 4;
+
     if(halted) {
         if(interruptPending()) {
             halted = false;
@@ -127,7 +137,13 @@ int CPU::step() {
         }
     }
 
-    uint8_t opcode = memory.read(PC++);
+    uint8_t opcode;
+    if (haltBug) {
+        opcode = memory.read(PC); // HALT bug: re-read the same byte without incrementing PC
+        haltBug = false;
+    } else {
+        opcode = memory.read(PC++);
+    }
 
     if (opcode == 0xCB) {
         uint8_t cb_opcode = memory.read(PC++);
@@ -1452,10 +1468,19 @@ int CPU::executeOpcode(uint8_t opcode) {
     switch(opcode) {
         case 0x00: return 4; /* NOP */
         case 0x27: daa(); return 4;
-        case 0x10: stopCPU(); return 4;
+        case 0x10: PC++; stopCPU(); return 4; // STOP is 2 bytes: opcode + mandatory padding
         case 0xF3: di(); return 4;
         case 0xFB: ei(); return 4;
-        default: throw std::string("Unimplemented opcode: ") + std::to_string(opcode);
+        default:
+            switch(opcode) {
+                case 0xD3: case 0xDB: case 0xDD: case 0xE3: case 0xE4:
+                case 0xEB: case 0xEC: case 0xED: case 0xF4: case 0xFC: case 0xFD:
+                    // Illegal opcode: real hardware locks up the CPU instead of crashing
+                    locked = true;
+                    return 4;
+                default:
+                    throw std::string("Unimplemented opcode: ") + std::to_string(opcode);
+            }
     }
     return 0;
 }
