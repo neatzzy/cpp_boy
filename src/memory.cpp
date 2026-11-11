@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "cartridge.h"
 #include "ppu.h"
+#include "timer.h"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -37,7 +38,8 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
     if(addr == 0xFF04){
-        ram[0xFF04] = 0; // Writing to DIV resets it to 0
+        // Writing to DIV resets the whole internal counter (may trigger a TIMA edge)
+        if (timer) timer->resetDiv(); else ram[0xFF04] = 0;
         return;
     }
 
@@ -58,6 +60,7 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xFE00 && addr <= 0xFE9F) { ppu->writeOAM(addr, value); return; }
 
     ram[addr] = value;
+    if (addr == 0xFF07 && timer) timer->tacChanged();
 }
 
 uint16_t Memory::read16(uint16_t addr) {

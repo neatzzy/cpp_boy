@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
         CPU cpu(memory);
 
         memory.ppu = &ppu;
+        memory.timer = &timer;
 
         memory.loadBIOS("gb_bios.bin");
 
