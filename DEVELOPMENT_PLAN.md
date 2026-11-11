@@ -95,7 +95,17 @@ Sem teste automatizado, cada fase seguinte repete isso.
 Pulado: serial e CI. Texto na tela já dá pass/fail; adicionar GitHub Actions
 quando `make test` estiver verde.
 
-## Fase 1 — Corrigir o que já existe (TDD: ROM vermelha → verde)
+## Fase 1 — Corrigir o que já existe ✅ (concluída 2026-11-11)
+
+Resultado: `make test` 100% verde (stat_test + 01–11, instr_timing, halt_bug).
+Causas raiz: `sbcA` lia o carry-in depois de sobrescrevê-lo; timer reescrito
+com contador de sistema de 16 bits e borda de descida; `halt_bug` não era HALT,
+era o IF devolvendo bits 5–7 zerados (hardware devolve 1); STAT com linha única
+e detecção de borda. Pendente da fase: nada. `cpu_instrs.gb` combinado ainda
+precisa de MBC1 (Fase 3). Simplificações conhecidas: reload de TIMA sem atraso
+de 1 M-cycle (Fase 5).
+
+Plano original da fase:
 
 0. `CPU::sbcA`: alvo 04, 09, 11 verdes.
 1. Timer: contador interno de 16 bits compartilhado por DIV e TIMA; escrita em
