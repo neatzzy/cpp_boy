@@ -22,6 +22,7 @@ OBJS      = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
 CORE_OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(CORE_SRCS))
 
 TEST_RUNNER = $(BUILD_DIR)/run_rom
+STAT_TEST   = $(BUILD_DIR)/stat_test
 TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug
 
 $(TARGET): $(OBJS)
@@ -33,12 +34,17 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 $(TEST_RUNNER): tests/run_rom.cpp $(CORE_OBJS) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(INC_DIR) tests/run_rom.cpp $(CORE_OBJS) -o $@
 
+$(STAT_TEST): tests/stat_test.cpp $(CORE_OBJS) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(INC_DIR) tests/stat_test.cpp $(CORE_OBJS) -o $@
+
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-test: $(TEST_RUNNER)
+test: $(TEST_RUNNER) $(STAT_TEST)
 	@sh tests/fetch_roms.sh
-	@fail=0; for rom in $(TEST_ROMS); do \
+	@fail=0; \
+	if $(STAT_TEST); then echo "PASS stat_test"; else echo "FAIL stat_test"; fail=1; fi; \
+	for rom in $(TEST_ROMS); do \
 		if $(TEST_RUNNER) tests/roms/$$rom.gb > $(BUILD_DIR)/$$rom.log; then \
 			echo "PASS $$rom"; \
 		else \
