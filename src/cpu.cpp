@@ -469,9 +469,10 @@ void CPU::subA(uint8_t operand) {
 
 void CPU::sbcA(uint8_t operand) {
         // Subtract operand and carry flag from A
-        uint16_t result = A - operand - (F & 0b00010000 ? 1 : 0);
+        uint8_t carry = (F & 0b00010000) ? 1 : 0;
+        uint16_t result = A - operand - carry;
         setCarryFlag(result > A);
-        setHalfCarryFlag((A & 0xF) < (operand & 0xF) + (F & 0b00010000 ? 1 : 0));
+        setHalfCarryFlag((A & 0xF) < (operand & 0xF) + carry);
         setZeroFlag((result & 0xFF) == 0);
         setSubtractFlag(true);
         A = result & 0xFF;
