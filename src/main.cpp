@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "memory.h"
 #include "timer.h"
+#include "input.h"
 #include "ppu.h"
 #include "cartridge.h"
 #include <iostream>
@@ -21,10 +22,12 @@ int main(int argc, char** argv) {
 
         PPU ppu(memory);
         Timer timer(memory);
+        Joypad joypad(memory);
         CPU cpu(memory);
 
         memory.ppu = &ppu;
         memory.timer = &timer;
+        memory.joypad = &joypad;
 
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             std::cerr << "Error initializing SDL: " << SDL_GetError() << "\n";
@@ -67,10 +70,23 @@ int main(int argc, char** argv) {
                 if (event.type == SDL_QUIT) {
                     running = false;
                 } 
-                else if (event.type == SDL_KEYDOWN) {
-                    if (event.key.keysym.sym == SDLK_ESCAPE) {
-                        running = false;
+                else if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+                    bool down = event.type == SDL_KEYDOWN;
+                    SDL_Keycode key = event.key.keysym.sym;
+                    if (down && key == SDLK_ESCAPE) running = false;
+                    switch (key) {
+                        case SDLK_RIGHT:     joypad.setButton(Button::Right, down); break;
+                        case SDLK_LEFT:      joypad.setButton(Button::Left, down); break;
+                        case SDLK_UP:        joypad.setButton(Button::Up, down); break;
+                        case SDLK_DOWN:      joypad.setButton(Button::Down, down); break;
+                        case SDLK_z:         joypad.setButton(Button::A, down); break;
+                        case SDLK_x:         joypad.setButton(Button::B, down); break;
+                        case SDLK_RETURN:    joypad.setButton(Button::Start, down); break;
+                        case SDLK_RSHIFT:
+                        case SDLK_BACKSPACE: joypad.setButton(Button::Select, down); break;
+                        default: break;
                     }
+                    if (down && key != SDLK_ESCAPE) cpu.stopped = false; // any key wakes STOP
                 }
             }
         }

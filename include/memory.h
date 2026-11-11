@@ -6,11 +6,13 @@
 class Cartridge;
 class PPU;
 class Timer;
+class Joypad;
 class Memory {
 public:
     Cartridge* cart = nullptr;
     PPU* ppu = nullptr;
     Timer* timer = nullptr;
+    Joypad* joypad = nullptr;
 
     std::vector<uint8_t> ram = std::vector<uint8_t>(65536, 0);
 
