@@ -31,6 +31,8 @@ uint8_t Memory::read(uint16_t addr) {
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
     if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
 
+    if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
+
     return ram[addr];
 }
 
@@ -84,7 +86,7 @@ uint16_t Memory::pop(uint16_t& SP) {
 }
 
 void Memory::requestInterrupt(uint8_t interrupt_bit) {
-    uint8_t req = read(0xFF0F);
+    uint8_t req = read_direct(0xFF0F);
     req |= (1 << interrupt_bit);
     write_direct(0xFF0F, req);
 }
