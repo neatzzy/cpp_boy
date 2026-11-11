@@ -117,7 +117,10 @@ Plano original da fase:
 6. Remover `loadBIOS` de `main.cpp`, o `printf` por frame e o código morto.
 7. Ligar vsync (`SDL_RENDERER_PRESENTVSYNC`).
 
-## Fase 2 — Tetris jogável
+## Fase 2 — Tetris jogável ✅ (implementada 2026-11-11; falta validação visual)
+
+Joypad, sprites e window com testes (`joypad_test`, `ppu_test`), `make test` verde.
+Pendente: confirmar `tetris.gb` jogável rodando `./emulator` com janela.
 
 1. Joypad: registro `0xFF00` (seleção bits 4/5, 0 = pressionado), interrupt bit 4,
    eventos SDL em `main.cpp`. STOP passa a acordar com botão.

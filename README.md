@@ -2,8 +2,9 @@
 
 A Game Boy (DMG) emulator written in C++23, with SDL2 for video.
 
-Work in progress: the CPU, timer and interrupts pass the Blargg test ROMs, but
-the emulator is not yet able to play commercial games. See
+Work in progress: the CPU, timer and interrupts pass the Blargg test ROMs, and
+joypad, sprites and window are implemented. There is no cartridge banking or
+audio yet, so most commercial games do not run. See
 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) for the roadmap.
 
 ## Status
@@ -14,11 +15,15 @@ the emulator is not yet able to play commercial games. See
 | Timer (DIV/TIMA/TMA/TAC) | Done, passes `instr_timing` and `02-interrupts` |
 | PPU background | Done |
 | PPU STAT interrupts (LYC, modes 0/1/2) | Done |
-| Joypad, sprites, window | In progress (Phase 2) |
+| Joypad (`0xFF00`, joypad interrupt) | Done, covered by `joypad_test` |
+| PPU sprites (OBJ, 8x8 and 8x16) | Done, covered by `ppu_test` |
+| PPU window | Done, covered by `ppu_test` |
 | Cartridge banking (MBC1, MBC5) and battery saves | Not started (Phase 3) |
 | Audio (APU) | Not started (Phase 4) |
 
-Until MBC support lands, only 32 KB ROM-only cartridges run (e.g. Tetris).
+There is no ROM banking: `src/cartridge.cpp` loads the whole file but only
+addresses below 32 KB are readable, and writes to the cartridge are ignored.
+Only 32 KB ROM-only cartridges can run fully until MBC support lands.
 
 ## Requirements
 
@@ -35,7 +40,18 @@ make
 ./emulator path/to/game.gb
 ```
 
-Press `ESC` to quit. ROMs are not included; `*.gb` files are gitignored.
+Controls:
+
+| Game Boy | Key |
+|---|---|
+| D-pad | Arrow keys |
+| A | `Z` |
+| B | `X` |
+| Start | `Enter` |
+| Select | `Right Shift` or `Backspace` |
+| Quit | `Esc` (or close the window) |
+
+ROMs are not included; `*.gb` files are gitignored.
 
 ## Tests
 
@@ -43,24 +59,36 @@ Press `ESC` to quit. ROMs are not included; `*.gb` files are gitignored.
 make test
 ```
 
-Downloads the Blargg test ROMs into `tests/roms/` on first run, executes them
-headless (no SDL window) and prints `PASS`/`FAIL` per ROM. For a failing ROM,
-the final screen text is saved to `build/<rom>.log`.
+Builds and runs, in order:
+
+- `stat_test`: STAT interrupt line (edge detection, sources) and read-only STAT/LY bits
+- `joypad_test`: `0xFF00` register behavior
+- `ppu_test`: sprite (OBJ) and window rendering
+- Blargg ROMs: `cpu_instrs` 01-11 (individual), `instr_timing` and `halt_bug`
+
+The Blargg ROMs are downloaded into `tests/roms/` on first run (needs `curl`)
+and executed headless (no SDL window). Output is `PASS`/`FAIL` per test. For a
+failing ROM, the final screen text is saved to `build/<rom>.log`.
 
 How it works: Blargg ROMs print their verdict as ASCII tiles on the background
 map, so `tests/run_rom.cpp` runs the emulator core without SDL and reads the
-verdict from VRAM. `tests/stat_test.cpp` covers the STAT interrupt line.
+verdict from VRAM. The other tests are standalone programs that exit non-zero
+on assertion failure.
 
 ## Layout
 
 ```
 src/cpu.cpp        CPU: registers, opcodes, interrupts
 src/memory.cpp     Address bus, echo RAM, IO register routing
-src/ppu.cpp        Scanline renderer, LCD modes, STAT
+src/ppu.cpp        Scanline renderer (background, window, sprites), LCD modes, STAT
 src/timer.cpp      16-bit system counter driving DIV and TIMA
+src/input.cpp      Joypad register (0xFF00) and joypad interrupt
 src/cartridge.cpp  ROM loading
 src/main.cpp       SDL frontend and main loop
-tests/             Headless ROM runner, unit tests, ROM downloader
+include/            Headers (cpu.h, memory.h, ppu.h, timer.h, input.h, cartridge.h)
+tests/run_rom.cpp  Headless Blargg ROM runner
+tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp   Standalone unit tests
+tests/fetch_roms.sh  Downloads the Blargg ROMs
 ```
 
 ## License
