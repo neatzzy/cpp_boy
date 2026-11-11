@@ -73,7 +73,7 @@ int main() {
     { Rig r; r.tile(1, 0xFF, 0x00);          // sprite colour 1 everywhere
       r.tile(0, 0x00, 0x00);                 // BG tile 0 = colour 0
       r.tile(5, 0xFF, 0xFF);                 // BG colour 3
-      r.ppu.writeVRAM(0x9800 + 2, 5);        // map col 2 (x 16..23) is tile 5
+      r.ppu.writeVRAM(0x9800 + 2 * 32 + 2, 5); // map row 2 (y 16..23), col 2 (x 16..23)
       r.sprite(0, 20, 12, 1, 0x80); r.objOn(); r.line(20);
       assert(r.px(12, 20) == L);             // over BG colour 0
       assert(r.px(16, 20) == B); }           // behind BG colour 3
@@ -100,7 +100,7 @@ int main() {
       r.ppu.writeVRAM(0x9C00, 1);
       r.memory.write_direct(0xFF40, 0x93 | 0x20 | 0x40);
       r.memory.write_direct(0xFF4A, 0); r.memory.write_direct(0xFF4B, 7); r.line(0);
-      assert(r.px(0, 0) == B); assert(r.px(7, 0) == W);   // tile col 1 of window map is tile 0
+      assert(r.px(0, 0) == B); assert(r.px(7, 0) == B); assert(r.px(8, 0) == W);
       Rig q; q.tile(0, 0x00, 0x00); q.tile(1, 0xFF, 0xFF);
       q.ppu.writeVRAM(0x9C00 + 2, 1);
       q.memory.write_direct(0xFF40, 0x93 | 0x20 | 0x40);
