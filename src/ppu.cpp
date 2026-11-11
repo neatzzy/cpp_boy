@@ -14,6 +14,7 @@ void PPU::tick(int cycles) {
     if (!lcd_enable) {
         // If LCD is disabled, reset the scanline counter and LY register, and set mode to HBlank (0)
         scanline_counter = 0;
+        stat_line = false;
         memory.write_direct(0xFF44, 0); // LY = 0
         uint8_t stat = memory.read_direct(0xFF41);
         memory.write_direct(0xFF41, (stat & 0xFC) | 0x00); // Modo 0
@@ -54,32 +55,33 @@ void PPU::updateSTAT() {
     uint8_t stat = memory.read_direct(0xFF41);
     uint8_t ly = memory.read_direct(0xFF44);
     
-    // Set LY=LYC flag (Bit 2) and request STAT interrupt if enabled
-    uint8_t lyc = memory.read_direct(0xFF45);
-    if (ly == lyc) {
-        stat |= 0b00000100; // Sets LY=LYC flag
-        // Throw STAT interrupt if enabled
-        if (stat & 0b01000000) memory.requestInterrupt(1); 
-    } else {
-        stat &= ~0b00000100; // Clears LY=LYC flag
-    }
-
     // Determine the current mode based on LY and scanline_counter
+    uint8_t mode;
     if (ly >= 144) {
-        // VBlank period
-        stat = (stat & 0xFC) | 1;
+        mode = 1; // VBlank period
+    } else if (scanline_counter < 80) {
+        mode = 2; // OAM Search
+    } else if (scanline_counter < 80 + 172) {
+        mode = 3; // Pixel Transfer
     } else {
-        // Visible scanlines
-        if (scanline_counter < 80) {
-            stat = (stat & 0xFC) | 2; // Mode 2 (OAM Search)
-        } else if (scanline_counter < 80 + 172) {
-            stat = (stat & 0xFC) | 3; // Mode 3 (Pixel Transfer)
-        } else {
-            stat = (stat & 0xFC) | 0; // Mode 0 (HBlank)
-        }
+        mode = 0; // HBlank
     }
+    stat = (stat & 0xFC) | mode;
+
+    // LY=LYC flag (Bit 2)
+    bool coincidence = ly == memory.read_direct(0xFF45);
+    if (coincidence) stat |= 0b00000100;
+    else stat &= ~0b00000100;
 
     memory.write_direct(0xFF41, stat);
+
+    // STAT interrupt line: OR of all enabled sources, requested on a 0->1 edge only
+    bool line = (coincidence && (stat & 0b01000000)) ||
+                (mode == 0 && (stat & 0b00001000)) ||
+                (mode == 1 && (stat & 0b00010000)) ||
+                (mode == 2 && (stat & 0b00100000));
+    if (line && !stat_line) memory.requestInterrupt(1);
+    stat_line = line;
 }
 
 // Implementations for reading/writing PPU registers

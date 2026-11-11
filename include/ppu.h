@@ -8,6 +8,7 @@ class PPU {
 private:
     Memory& memory;
     int scanline_counter = 0;
+    bool stat_line = false; // previous STAT interrupt line state (for 0->1 edge detection)
 
     std::vector<uint8_t> vram; // 0x8000 - 0x9FFF (8KB)
     std::vector<uint8_t> oam;  // 0xFE00 - 0xFE9F (160 bytes)

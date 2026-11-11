@@ -41,6 +41,9 @@ void Memory::write(uint16_t addr, uint8_t value) {
         return;
     }
 
+    if (addr == 0xFF44) return; // LY is read-only
+    if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
+
     if(addr < 0x8000){
         // Delegate writes to the cartridge if the address is in the ROM area. Most cartridges won't actually write to this area, but some might have special behavior (e.g., for bank switching).
         if (cart) cart->write(addr, value);
