@@ -23,7 +23,7 @@ uint8_t Cartridge::read(uint16_t addr) {
     return 0xFF; // Standard return value for unmapped memory reads, can be adjusted based on specific cartridge behavior
 }
 
-void Cartridge::write(uint16_t addr, uint8_t value) {
+void Cartridge::write(uint16_t, uint8_t) {
     // Most cartridges are read-only, but some may have writable areas (e.g., for save data).
     // This function can be expanded to handle specific cartridge types that support writing.
 }

@@ -26,8 +26,6 @@ int main(int argc, char** argv) {
         memory.ppu = &ppu;
         memory.timer = &timer;
 
-        memory.loadBIOS("gb_bios.bin");
-
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             std::cerr << "Error initializing SDL: " << SDL_GetError() << "\n";
             return 1;
@@ -37,7 +35,7 @@ int main(int argc, char** argv) {
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
             160 * 4, 144 * 4, SDL_WINDOW_SHOWN);
 
-        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         SDL_Texture* texture = SDL_CreateTexture(renderer, 
             SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);       
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -59,11 +57,6 @@ int main(int argc, char** argv) {
                 
                 cycles_this_frame += cycles;
             }
-
-            printf("Instruction: %02X | A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X SP: %04X PC: %04X\n", 
-                memory.read(cpu.PC - 1), cpu.A, cpu.F, cpu.B, cpu.C, cpu.D, cpu.E, cpu.H, cpu.L, cpu.SP, cpu.PC);
-
-            ppu.frame_ready = false; 
 
             SDL_UpdateTexture(texture, nullptr, ppu.framebuffer, 160 * sizeof(uint32_t));
             SDL_RenderClear(renderer);
