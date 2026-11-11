@@ -16,8 +16,6 @@ private:
 
 public:
     uint32_t framebuffer[160 * 144] = {0}; 
-    
-    bool frame_ready = false;
 
     PPU(Memory& mem);
 
@@ -26,10 +24,6 @@ public:
     void writeVRAM(uint16_t addr, uint8_t value);
     uint8_t readOAM(uint16_t addr);
     void writeOAM(uint16_t addr, uint8_t value);
-
-    // Methods to read/write PPU registers
-    uint8_t readRegister(uint16_t addr);
-    void writeRegister(uint16_t addr, uint8_t value);
 
     // Method to render the current scanline
     void renderScanline();

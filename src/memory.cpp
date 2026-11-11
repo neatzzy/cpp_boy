@@ -11,14 +11,6 @@ Memory::Memory() {
     ram[0xFF41] = 0x85; // STAT: Enable VBlank interrupt, use mode 1 for OAM search
 }
 
-void Memory::loadBIOS(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        throw std::runtime_error("Failed to open BIOS file: " + path);
-    }
-    file.read((char*)ram.data(), 256);
-}
-
 uint8_t Memory::read(uint16_t addr) {
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
@@ -29,6 +21,7 @@ uint8_t Memory::read(uint16_t addr) {
 
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
     if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
+    if (addr == 0xFF00) return 0xCF; // Placeholder for Phase 2 joypad: no buttons pressed
 
     return ram[addr];
 }
@@ -67,17 +60,6 @@ uint16_t Memory::read16(uint16_t addr) {
 void Memory::write16(uint16_t addr, uint16_t value) {
     write(addr, value & 0xFF);
     write(addr + 1, (value >> 8) & 0xFF);
-}
-
-void Memory::push(uint16_t value, uint16_t& SP) {
-    SP -= 2;
-    write16(SP, value);
-}
-
-uint16_t Memory::pop(uint16_t& SP) {
-    uint16_t value = read16(SP);
-    SP += 2;
-    return value;
 }
 
 void Memory::requestInterrupt(uint8_t interrupt_bit) {

@@ -38,7 +38,6 @@ void PPU::tick(int cycles) {
         // If we just entered VBlank (LY == 144), request a VBlank interrupt
         if (ly == 144) {
             memory.requestInterrupt(0); // Interrupt Bit 0 is VBlank
-            frame_ready = true; // Signal that a new frame is ready to be rendered
         }
 
         // After LY reaches 153, it wraps back to 0
