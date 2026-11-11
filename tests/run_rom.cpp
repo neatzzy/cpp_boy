@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "memory.h"
 #include "timer.h"
+#include "input.h"
 #include "ppu.h"
 #include "cartridge.h"
 #include <cstdio>
@@ -36,9 +37,11 @@ int main(int argc, char** argv) {
     memory.cart = &cart;
     PPU ppu(memory);
     Timer timer(memory);
+    Joypad joypad(memory);
     CPU cpu(memory);
     memory.ppu = &ppu;
     memory.timer = &timer;
+    memory.joypad = &joypad;
 
     std::string text;
     try {

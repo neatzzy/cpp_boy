@@ -2,6 +2,7 @@
 #include "cartridge.h"
 #include "ppu.h"
 #include "timer.h"
+#include "input.h"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -22,7 +23,7 @@ uint8_t Memory::read(uint16_t addr) {
 
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
     if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
-    if (addr == 0xFF00) return 0xCF; // Placeholder for Phase 2 joypad: no buttons pressed
+    if (addr == 0xFF00) return joypad ? joypad->read() : 0xFF;
 
     if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
 
@@ -54,6 +55,7 @@ void Memory::write(uint16_t addr, uint8_t value) {
     }
 }
 
+    if (addr == 0xFF00) { if (joypad) joypad->write(value); return; }
     if (addr >= 0x8000 && addr <= 0x9FFF) { ppu->writeVRAM(addr, value); return; }
     if (addr >= 0xFE00 && addr <= 0xFE9F) { ppu->writeOAM(addr, value); return; }
 
