@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
     Timer timer(memory);
     CPU cpu(memory);
     memory.ppu = &ppu;
+    memory.timer = &timer;
 
     std::string text;
     try {

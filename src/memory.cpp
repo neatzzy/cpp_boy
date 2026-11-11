@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "cartridge.h"
 #include "ppu.h"
+#include "timer.h"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -30,6 +31,8 @@ uint8_t Memory::read(uint16_t addr) {
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
     if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
 
+    if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
+
     return ram[addr];
 }
 
@@ -37,7 +40,8 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
     if(addr == 0xFF04){
-        ram[0xFF04] = 0; // Writing to DIV resets it to 0
+        // Writing to DIV resets the whole internal counter (may trigger a TIMA edge)
+        if (timer) timer->resetDiv(); else ram[0xFF04] = 0;
         return;
     }
 
@@ -58,6 +62,7 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xFE00 && addr <= 0xFE9F) { ppu->writeOAM(addr, value); return; }
 
     ram[addr] = value;
+    if (addr == 0xFF07 && timer) timer->tacChanged();
 }
 
 uint16_t Memory::read16(uint16_t addr) {
@@ -81,7 +86,7 @@ uint16_t Memory::pop(uint16_t& SP) {
 }
 
 void Memory::requestInterrupt(uint8_t interrupt_bit) {
-    uint8_t req = read(0xFF0F);
+    uint8_t req = read_direct(0xFF0F);
     req |= (1 << interrupt_bit);
     write_direct(0xFF0F, req);
 }
