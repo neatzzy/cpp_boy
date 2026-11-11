@@ -13,7 +13,13 @@ private:
     std::vector<uint8_t> vram; // 0x8000 - 0x9FFF (8KB)
     std::vector<uint8_t> oam;  // 0xFE00 - 0xFE9F (160 bytes)
 
+    uint8_t window_line = 0;   // internal window line counter
+    int bg_index[160] = {0};   // raw BG/window colour index of current line (for OBJ priority)
+
     void updateSTAT();
+    int tilePixel(uint16_t tileMap, uint8_t x, uint8_t y);
+    void renderWindow();
+    void renderSprites();
 
 public:
     uint32_t framebuffer[160 * 144] = {0}; 

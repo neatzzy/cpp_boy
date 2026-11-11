@@ -14,6 +14,7 @@ void PPU::tick(int cycles) {
     if (!lcd_enable) {
         // If LCD is disabled, reset the scanline counter and LY register, and set mode to HBlank (0)
         scanline_counter = 0;
+        window_line = 0;
         stat_line = false;
         memory.write_direct(0xFF44, 0); // LY = 0
         uint8_t stat = memory.read_direct(0xFF41);
@@ -35,6 +36,7 @@ void PPU::tick(int cycles) {
 
         ly++;
         memory.write_direct(0xFF44, ly);
+        if (ly == 144) window_line = 0; // new frame starts after VBlank; reset here, before next render
 
         // If we just entered VBlank (LY == 144), request a VBlank interrupt
         if (ly == 144) {
@@ -105,13 +107,39 @@ uint32_t PPU::getColor(uint8_t color_id, uint16_t palette_addr) {
     return 0xFF000000;
 }
 
+// Colour index (0-3) of the pixel at (x, y) of a 256x256 tile map.
+int PPU::tilePixel(uint16_t tileMap, uint8_t x, uint8_t y) {
+    uint8_t lcdc = memory.read_direct(0xFF40);
+    bool unsig = (lcdc & 0b00010000) != 0;
+    uint16_t tileData = unsig ? 0x8000 : 0x8800;
+
+    uint16_t tileAddress = tileMap + (y / 8) * 32 + (x / 8);
+    int16_t tileNum = 0;
+    if (tileAddress >= 0x8000 && tileAddress <= 0x9FFF) {
+        uint8_t raw = readVRAM(tileAddress);
+        tileNum = unsig ? raw : (int8_t)raw;
+    }
+
+    uint16_t tileLocation = tileData + (unsig ? tileNum : tileNum + 128) * 16;
+    uint8_t line = (y % 8) * 2;
+
+    uint8_t data1 = 0, data2 = 0;
+    if (tileLocation >= 0x8000 && tileLocation + line + 1 <= 0x9FFF) {
+        data1 = readVRAM(tileLocation + line);
+        data2 = readVRAM(tileLocation + line + 1);
+    }
+    int bit = 7 - (x % 8);
+    return (((data2 >> bit) & 1) << 1) | ((data1 >> bit) & 1);
+}
+
 void PPU::renderScanline() {
     uint8_t lcdc = memory.read_direct(0xFF40);
-    
-    // Bit 0 do LCDC diz se o Fundo (Background) está ligado
-    if (lcdc & 0b00000001) {
-        renderBackground();
-    }
+    uint8_t ly = memory.read_direct(0xFF44);
+    if (ly >= 144) return;
+
+    renderBackground(); // also fills bg_index (all 0 when BG is off)
+    if (lcdc & 0b00000001) renderWindow();
+    if (lcdc & 0b00000010) renderSprites();
 }
 
 void PPU::renderBackground() {
@@ -119,57 +147,65 @@ void PPU::renderBackground() {
     uint8_t scrollY = memory.read_direct(0xFF42);
     uint8_t scrollX = memory.read_direct(0xFF43);
     uint8_t ly = memory.read_direct(0xFF44);
-
     uint16_t tileMap = (lcdc & 0b00001000) ? 0x9C00 : 0x9800;
-
-    uint16_t tileData = (lcdc & 0b00010000) ? 0x8000 : 0x8800;
-    bool unsig = (lcdc & 0b00010000) != 0;
-
-    uint8_t yPos = scrollY + ly;
-
-    uint16_t tileRow = ((uint8_t)(yPos / 8)) * 32;
+    bool bgOn = lcdc & 0b00000001;
 
     for (int pixel = 0; pixel < 160; pixel++) {
-        uint8_t xPos = pixel + scrollX;
+        int c = bgOn ? tilePixel(tileMap, (uint8_t)(pixel + scrollX), (uint8_t)(scrollY + ly)) : 0;
+        bg_index[pixel] = c;
+        framebuffer[ly * 160 + pixel] = getColor(c, 0xFF47);
+    }
+}
 
-        uint16_t tileCol = (xPos / 8);
+void PPU::renderWindow() {
+    uint8_t lcdc = memory.read_direct(0xFF40);
+    uint8_t ly = memory.read_direct(0xFF44);
+    int wx = memory.read_direct(0xFF4B) - 7;
+    if (!(lcdc & 0b00100000) || ly < memory.read_direct(0xFF4A) || wx >= 160) return;
 
-        int16_t tileNum;
-        uint16_t tileAddress = tileMap + tileRow + tileCol;
+    uint16_t tileMap = (lcdc & 0b01000000) ? 0x9C00 : 0x9800;
+    for (int pixel = wx < 0 ? 0 : wx; pixel < 160; pixel++) {
+        int c = tilePixel(tileMap, (uint8_t)(pixel - wx), window_line);
+        bg_index[pixel] = c;
+        framebuffer[ly * 160 + pixel] = getColor(c, 0xFF47);
+    }
+    window_line++;
+}
 
-        if (tileAddress >= 0x8000 && tileAddress <= 0x9FFF) {
-            if (unsig) {
-                tileNum = (uint8_t)readVRAM(tileAddress);
-            } else {
-                tileNum = (int8_t)readVRAM(tileAddress);
-            }
-        } else {
-            tileNum = 0;
+void PPU::renderSprites() {
+    uint8_t lcdc = memory.read_direct(0xFF40);
+    int ly = memory.read_direct(0xFF44);
+    int height = (lcdc & 0b00000100) ? 16 : 8;
+
+    // First 10 sprites in OAM order that cover this line.
+    int hit[10], n = 0;
+    for (int i = 0; i < 40 && n < 10; i++) {
+        int top = oam[i * 4] - 16;
+        if (ly >= top && ly < top + height) hit[n++] = i;
+    }
+
+    // Drawn pixel owner per x: lower X wins, ties by lower OAM index.
+    int owner_x[160];
+    for (int& v : owner_x) v = 1000;
+    for (int k = 0; k < n; k++) {
+        int i = hit[k];
+        int sx = oam[i * 4 + 1] - 8;
+        uint8_t tile = oam[i * 4 + 2], attr = oam[i * 4 + 3];
+        int row = ly - (oam[i * 4] - 16);
+        if (attr & 0x40) row = height - 1 - row;
+        if (height == 16) tile = (tile & 0xFE) | (row >= 8);
+        uint16_t addr = 0x8000 + tile * 16 + (row % 8) * 2;
+        uint8_t lo = readVRAM(addr), hi = readVRAM(addr + 1);
+
+        for (int px = 0; px < 8; px++) {
+            int x = sx + px;
+            if (x < 0 || x >= 160 || sx >= owner_x[x]) continue;
+            int bit = (attr & 0x20) ? px : 7 - px;
+            int c = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
+            if (c == 0) continue;
+            owner_x[x] = sx;
+            if ((attr & 0x80) && bg_index[x] != 0) continue;
+            framebuffer[ly * 160 + x] = getColor(c, (attr & 0x10) ? 0xFF49 : 0xFF48);
         }
-
-        uint16_t tileLocation = tileData;
-        if (unsig) {
-            tileLocation += (tileNum * 16);
-        } else {
-            tileLocation += ((tileNum + 128) * 16);
-        }
-
-        uint8_t line = yPos % 8;
-        line *= 2;
-
-        uint8_t data1 = 0, data2 = 0;
-        if (tileLocation >= 0x8000 && tileLocation + line + 1 <= 0x9FFF) {
-            data1 = readVRAM(tileLocation + line);
-            data2 = readVRAM(tileLocation + line + 1);
-        }
-
-        int colorBit = 7 - (xPos % 8);
-
-        int colorNum = ((data2 >> colorBit) & 1) << 1;
-        colorNum |= ((data1 >> colorBit) & 1);
-
-        uint32_t finalColor = getColor(colorNum, 0xFF47);
-
-        framebuffer[ly * 160 + pixel] = finalColor;
     }
 }
