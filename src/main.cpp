@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "input.h"
 #include "ppu.h"
+#include "apu.h"
 #include "cartridge.h"
 #include <iostream>
 #include <SDL2/SDL.h>
@@ -23,13 +24,15 @@ int main(int argc, char** argv) {
         PPU ppu(memory);
         Timer timer(memory);
         Joypad joypad(memory);
+        APU apu;
         CPU cpu(memory);
 
         memory.ppu = &ppu;
         memory.timer = &timer;
         memory.joypad = &joypad;
+        memory.apu = &apu;
 
-        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
             std::cerr << "Error initializing SDL: " << SDL_GetError() << "\n";
             return 1;
         }
@@ -42,6 +45,17 @@ int main(int argc, char** argv) {
         SDL_Texture* texture = SDL_CreateTexture(renderer, 
             SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);       
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
+        SDL_AudioSpec want{}, have{};
+        want.freq = 44100;
+        want.format = AUDIO_F32SYS;
+        want.channels = 2;
+        want.samples = 1024;
+        SDL_AudioDeviceID audio = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        if (audio) SDL_PauseAudioDevice(audio, 0);
+        else std::cerr << "Warning: no audio device (" << SDL_GetError() << "), running silent\n";
+        // Cap the queue at ~3 frames so audio latency can't drift; vsync paces the loop.
+        const Uint32 MAX_QUEUED_BYTES = 3 * 738 * 2 * sizeof(float);
 
         SDL_Event event;
         bool running = true;
@@ -57,9 +71,14 @@ int main(int argc, char** argv) {
                 int cycles = cpu.step();
                 timer.tick(cycles);
                 ppu.tick(cycles);
+                apu.tick(cycles);
                 
                 cycles_this_frame += cycles;
             }
+
+            if (audio && SDL_GetQueuedAudioSize(audio) < MAX_QUEUED_BYTES)
+                SDL_QueueAudio(audio, apu.samples.data(), apu.samples.size() * sizeof(float));
+            apu.samples.clear();
 
             SDL_UpdateTexture(texture, nullptr, ppu.framebuffer, 160 * sizeof(uint32_t));
             SDL_RenderClear(renderer);
@@ -91,6 +110,7 @@ int main(int argc, char** argv) {
             }
         }
         cart.save();
+        if (audio) SDL_CloseAudioDevice(audio);
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
