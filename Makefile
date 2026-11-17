@@ -29,7 +29,10 @@ JOYPAD_TEST = $(BUILD_DIR)/joypad_test
 PPU_TEST    = $(BUILD_DIR)/ppu_test
 CART_TEST   = $(BUILD_DIR)/cartridge_test
 APU_TEST    = $(BUILD_DIR)/apu_test
-TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug cpu_instrs snd01 snd02 snd03 snd04 snd05 snd06 snd07 snd08 snd11
+TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug cpu_instrs snd01 snd02 snd03 snd04 snd05 snd06 snd07 snd08 snd11 \
+              mts_timer_div_write mts_timer_rapid_toggle mts_timer_tim00 mts_timer_tim00_div_trigger \
+              mts_timer_tim01 mts_timer_tim01_div_trigger mts_timer_tim10 mts_timer_tim10_div_trigger \
+              mts_timer_tim11 mts_timer_tim11_div_trigger mts_oam_dma_basic mts_oam_dma_reg_read
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(SDL2_LIBS)
