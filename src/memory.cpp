@@ -74,6 +74,12 @@ void Memory::write16(uint16_t addr, uint16_t value) {
     write(addr + 1, (value >> 8) & 0xFF);
 }
 
+void Memory::tick(int cycles) {
+    if (timer) timer->tick(cycles);
+    if (ppu) ppu->tick(cycles);
+    if (apu) apu->tick(cycles);
+}
+
 void Memory::requestInterrupt(uint8_t interrupt_bit) {
     uint8_t req = read_direct(0xFF0F);
     req |= (1 << interrupt_bit);

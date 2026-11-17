@@ -68,12 +68,7 @@ int main(int argc, char** argv) {
             int cycles_this_frame = 0;
 
             while (cycles_this_frame < MAX_CYCLES_PER_FRAME) {
-                int cycles = cpu.step();
-                timer.tick(cycles);
-                ppu.tick(cycles);
-                apu.tick(cycles);
-                
-                cycles_this_frame += cycles;
+                cycles_this_frame += cpu.step(); // step() ticks timer/PPU/APU itself
             }
 
             if (audio && SDL_GetQueuedAudioSize(audio) < MAX_QUEUED_BYTES)

@@ -36,6 +36,13 @@ struct CPU{
     // Debug
     void dumpRegisters();
 
+    int ticked = 0; // T-cycles already ticked on the system during the current step()
+
+    // Bus access through the CPU: each one ticks timer/PPU/APU by one M-cycle
+    uint8_t busRead(uint16_t addr);
+    void busWrite(uint16_t addr, uint8_t value);
+    void idle(int cycles);
+
     void push(uint16_t value);
 
     uint16_t pop();

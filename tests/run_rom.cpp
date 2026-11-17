@@ -63,11 +63,7 @@ int main(int argc, char** argv) {
                         return 1;
                     }
                 }
-                int n = cpu.step();
-                timer.tick(n);
-                ppu.tick(n);
-                apu.tick(n);
-                cycles += n;
+                cycles += cpu.step(); // step() ticks timer/PPU/APU itself
             }
             apu.samples.clear();
             text = screenText(ppu);
