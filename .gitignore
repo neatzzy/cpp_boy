@@ -42,3 +42,6 @@ roms/
 
 # VSCODE
 .vscode/
+
+# Battery saves
+*.sav

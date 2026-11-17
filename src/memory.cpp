@@ -1,6 +1,9 @@
 #include "memory.h"
 #include "cartridge.h"
 #include "ppu.h"
+#include "timer.h"
+#include "input.h"
+#include "apu.h"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -11,24 +14,37 @@ Memory::Memory() {
     ram[0xFF41] = 0x85; // STAT: Enable VBlank interrupt, use mode 1 for OAM search
 }
 
-void Memory::loadBIOS(const std::string& path) {
+void Memory::loadBootRom(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        throw std::runtime_error("Failed to open BIOS file: " + path);
-    }
-    file.read((char*)ram.data(), 256);
+    if (!file) throw std::runtime_error("Cannot open boot ROM: " + path);
+    std::vector<uint8_t> data(std::istreambuf_iterator<char>(file), {});
+    if (data.size() != 256)
+        throw std::runtime_error("Boot ROM must be exactly 256 bytes (got " + std::to_string(data.size()) + "): " + path);
+    bootRom = std::move(data);
+    ram[0xFF40] = 0x00; // power-up: LCD off, the boot ROM turns it on
+    ram[0xFF47] = 0x00;
+    ram[0xFF41] = 0x80;
 }
 
 uint8_t Memory::read(uint16_t addr) {
+    if (addr < 0x0100 && !bootRom.empty()) return bootRom[addr];
+    if (addr == 0xFF50) return 0xFF;
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
-    if(addr < 0x8000){
-        if (cart) return cart->read(addr); 
-        return 0xFF;
+    if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
+        return cart ? cart->read(addr) : 0xFF; // ROM banks and external RAM
     }
 
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
-    if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
+    // ponytail: during OAM DMA only OAM reads are blocked (0xFF); full DMG bus-conflict
+    // emulation (ROM/WRAM/VRAM reads returning the DMA byte) is not modeled.
+    if (addr >= 0xFE00 && addr <= 0xFE9F) return dma_active ? 0xFF : ppu->readOAM(addr);
+    if (addr == 0xFF00) return joypad ? joypad->read() : 0xFF;
+    if (apu && addr >= 0xFF10 && addr <= 0xFF3F) return apu->read(addr);
+
+    if (addr == 0xFF4D) return 0xFF; // KEY1 is CGB-only; DMG reads 0xFF (blargg uses it to detect CGB)
+    if (addr == 0xFF07) return ram[addr] | 0xF8; // TAC: unused upper 5 bits read as 1
+    if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
 
     return ram[addr];
 }
@@ -37,27 +53,36 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
     if(addr == 0xFF04){
-        ram[0xFF04] = 0; // Writing to DIV resets it to 0
+        // Writing to DIV resets the whole internal counter (may trigger a TIMA edge)
+        if (timer) timer->resetDiv(); else ram[0xFF04] = 0;
         return;
     }
 
-    if(addr < 0x8000){
-        // Delegate writes to the cartridge if the address is in the ROM area. Most cartridges won't actually write to this area, but some might have special behavior (e.g., for bank switching).
-        if (cart) cart->write(addr, value);
+    if (timer && addr == 0xFF05) { timer->writeTIMA(value); return; }
+    if (timer && addr == 0xFF06) { timer->writeTMA(value); return; }
+    if (addr == 0xFF44) return; // LY is read-only
+    if (addr == 0xFF50) { if (value) bootRom.clear(); return; } // unmap boot ROM, one-way
+    if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
+
+    if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
+        if (cart) cart->write(addr, value); // MBC registers and external RAM
         return;
     }
 
     if (addr == 0xFF46) {
-    uint16_t source = value << 8;
-    for (int i = 0; i < 160; i++) {
-        ppu->writeOAM(0xFE00 + i, read(source + i));
+        // OAM DMA starts after a 1 M-cycle delay; a running transfer keeps going until then
+        dma_next = value << 8;
+        if (dma_next >= 0xE000) dma_next -= 0x2000; // 0xE0-0xFF sources read echo RAM
+        dma_start = 2;
     }
-}
 
+    if (addr == 0xFF00) { if (joypad) joypad->write(value); return; }
+    if (apu && addr >= 0xFF10 && addr <= 0xFF3F) { apu->write(addr, value); return; }
     if (addr >= 0x8000 && addr <= 0x9FFF) { ppu->writeVRAM(addr, value); return; }
     if (addr >= 0xFE00 && addr <= 0xFE9F) { ppu->writeOAM(addr, value); return; }
 
     ram[addr] = value;
+    if (addr == 0xFF07 && timer) timer->tacChanged();
 }
 
 uint16_t Memory::read16(uint16_t addr) {
@@ -69,19 +94,28 @@ void Memory::write16(uint16_t addr, uint16_t value) {
     write(addr + 1, (value >> 8) & 0xFF);
 }
 
-void Memory::push(uint16_t value, uint16_t& SP) {
-    SP -= 2;
-    write16(SP, value);
+// One OAM DMA byte per M-cycle
+void Memory::dmaStep() {
+    if (dma_start > 0 && --dma_start == 0) {
+        dma_active = true;
+        dma_source = dma_next;
+        dma_index = 0;
+    }
+    if (!dma_active) return;
+    if (dma_index == 160) { dma_active = false; return; } // OAM stays blocked through the last byte's M-cycle
+    ppu->writeOAM(0xFE00 + dma_index, read(dma_source + dma_index));
+    dma_index++;
 }
 
-uint16_t Memory::pop(uint16_t& SP) {
-    uint16_t value = read16(SP);
-    SP += 2;
-    return value;
+void Memory::tick(int cycles) {
+    for (int m = 0; m < cycles / 4; m++) dmaStep();
+    if (timer) timer->tick(cycles);
+    if (ppu) ppu->tick(cycles);
+    if (apu) apu->tick(cycles);
 }
 
 void Memory::requestInterrupt(uint8_t interrupt_bit) {
-    uint8_t req = read(0xFF0F);
+    uint8_t req = read_direct(0xFF0F);
     req |= (1 << interrupt_bit);
     write_direct(0xFF0F, req);
 }

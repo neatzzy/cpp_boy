@@ -1,14 +1,19 @@
 #include "cpu.h"
 #include "memory.h"
 #include "timer.h"
+#include "input.h"
 #include "ppu.h"
+#include "apu.h"
 #include "cartridge.h"
 #include <iostream>
+#include <string>
 #include <SDL2/SDL.h>
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "Use: ./emulator <rom.gb>\n";
+    const char* bootPath = nullptr;
+    if (argc == 4 && std::string(argv[2]) == "--boot") bootPath = argv[3];
+    if (argc != 2 && !bootPath) {
+        std::cout << "Use: ./emulator <rom.gb> [--boot dmg_boot.bin]\n";
         return 1;
     }
 
@@ -18,16 +23,23 @@ int main(int argc, char** argv) {
 
         Memory memory;
         memory.cart = &cart; 
+        if (bootPath) {
+            try { memory.loadBootRom(bootPath); }
+            catch (const std::exception& e) { std::cerr << "Error: " << e.what() << "\n"; return 1; }
+        }
 
         PPU ppu(memory);
         Timer timer(memory);
+        Joypad joypad(memory);
+        APU apu;
         CPU cpu(memory);
 
         memory.ppu = &ppu;
+        memory.timer = &timer;
+        memory.joypad = &joypad;
+        memory.apu = &apu;
 
-        memory.loadBIOS("gb_bios.bin");
-
-        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
             std::cerr << "Error initializing SDL: " << SDL_GetError() << "\n";
             return 1;
         }
@@ -36,10 +48,21 @@ int main(int argc, char** argv) {
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
             160 * 4, 144 * 4, SDL_WINDOW_SHOWN);
 
-        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
         SDL_Texture* texture = SDL_CreateTexture(renderer, 
             SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);       
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
+        SDL_AudioSpec want{}, have{};
+        want.freq = 44100;
+        want.format = AUDIO_F32SYS;
+        want.channels = 2;
+        want.samples = 1024;
+        SDL_AudioDeviceID audio = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        if (audio) SDL_PauseAudioDevice(audio, 0);
+        else std::cerr << "Warning: no audio device (" << SDL_GetError() << "), running silent\n";
+        // Cap the queue at ~3 frames so audio latency can't drift; vsync paces the loop.
+        const Uint32 MAX_QUEUED_BYTES = 3 * 738 * 2 * sizeof(float);
 
         SDL_Event event;
         bool running = true;
@@ -52,17 +75,12 @@ int main(int argc, char** argv) {
             int cycles_this_frame = 0;
 
             while (cycles_this_frame < MAX_CYCLES_PER_FRAME) {
-                int cycles = cpu.step();
-                timer.tick(cycles);
-                ppu.tick(cycles);
-                
-                cycles_this_frame += cycles;
+                cycles_this_frame += cpu.step(); // step() ticks timer/PPU/APU itself
             }
 
-            printf("Instruction: %02X | A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X SP: %04X PC: %04X\n", 
-                memory.read(cpu.PC - 1), cpu.A, cpu.F, cpu.B, cpu.C, cpu.D, cpu.E, cpu.H, cpu.L, cpu.SP, cpu.PC);
-
-            ppu.frame_ready = false; 
+            if (audio && SDL_GetQueuedAudioSize(audio) < MAX_QUEUED_BYTES)
+                SDL_QueueAudio(audio, apu.samples.data(), apu.samples.size() * sizeof(float));
+            apu.samples.clear();
 
             SDL_UpdateTexture(texture, nullptr, ppu.framebuffer, 160 * sizeof(uint32_t));
             SDL_RenderClear(renderer);
@@ -73,13 +91,28 @@ int main(int argc, char** argv) {
                 if (event.type == SDL_QUIT) {
                     running = false;
                 } 
-                else if (event.type == SDL_KEYDOWN) {
-                    if (event.key.keysym.sym == SDLK_ESCAPE) {
-                        running = false;
+                else if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+                    bool down = event.type == SDL_KEYDOWN;
+                    SDL_Keycode key = event.key.keysym.sym;
+                    if (down && key == SDLK_ESCAPE) running = false;
+                    switch (key) {
+                        case SDLK_RIGHT:     joypad.setButton(Button::Right, down); break;
+                        case SDLK_LEFT:      joypad.setButton(Button::Left, down); break;
+                        case SDLK_UP:        joypad.setButton(Button::Up, down); break;
+                        case SDLK_DOWN:      joypad.setButton(Button::Down, down); break;
+                        case SDLK_z:         joypad.setButton(Button::A, down); break;
+                        case SDLK_x:         joypad.setButton(Button::B, down); break;
+                        case SDLK_RETURN:    joypad.setButton(Button::Start, down); break;
+                        case SDLK_RSHIFT:
+                        case SDLK_BACKSPACE: joypad.setButton(Button::Select, down); break;
+                        default: break;
                     }
+                    if (down && key != SDLK_ESCAPE) cpu.stopped = false; // any key wakes STOP
                 }
             }
         }
+        cart.save();
+        if (audio) SDL_CloseAudioDevice(audio);
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);

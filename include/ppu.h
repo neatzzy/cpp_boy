@@ -8,16 +8,21 @@ class PPU {
 private:
     Memory& memory;
     int scanline_counter = 0;
+    bool stat_line = false; // previous STAT interrupt line state (for 0->1 edge detection)
 
     std::vector<uint8_t> vram; // 0x8000 - 0x9FFF (8KB)
     std::vector<uint8_t> oam;  // 0xFE00 - 0xFE9F (160 bytes)
 
+    uint8_t window_line = 0;   // internal window line counter
+    int bg_index[160] = {0};   // raw BG/window colour index of current line (for OBJ priority)
+
     void updateSTAT();
+    int tilePixel(uint16_t tileMap, uint8_t x, uint8_t y);
+    void renderWindow();
+    void renderSprites();
 
 public:
     uint32_t framebuffer[160 * 144] = {0}; 
-    
-    bool frame_ready = false;
 
     PPU(Memory& mem);
 
@@ -26,10 +31,6 @@ public:
     void writeVRAM(uint16_t addr, uint8_t value);
     uint8_t readOAM(uint16_t addr);
     void writeOAM(uint16_t addr, uint8_t value);
-
-    // Methods to read/write PPU registers
-    uint8_t readRegister(uint16_t addr);
-    void writeRegister(uint16_t addr, uint8_t value);
 
     // Method to render the current scanline
     void renderScanline();
