@@ -3,8 +3,8 @@
 A Game Boy (DMG) emulator written in C++23, with SDL2 for video.
 
 Work in progress: the CPU, timer and interrupts pass the Blargg test ROMs, and
-joypad, sprites and window are implemented. There is no cartridge banking or
-audio yet, so most commercial games do not run. See
+joypad, sprites, window and MBC1/MBC5 cartridges with battery saves are
+implemented. There is no audio yet. See
 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) for the roadmap.
 
 ## Status
@@ -18,12 +18,12 @@ audio yet, so most commercial games do not run. See
 | Joypad (`0xFF00`, joypad interrupt) | Done, covered by `joypad_test` |
 | PPU sprites (OBJ, 8x8 and 8x16) | Done, covered by `ppu_test` |
 | PPU window | Done, covered by `ppu_test` |
-| Cartridge banking (MBC1, MBC5) and battery saves | Not started (Phase 3) |
+| Cartridge banking (MBC1, MBC5), external RAM, battery saves | Done, covered by `cartridge_test` and combined `cpu_instrs` |
+| MBC2, MBC3 (RTC) | Not supported: runs as ROM-only with a warning |
 | Audio (APU) | Not started (Phase 4) |
 
-There is no ROM banking: `src/cartridge.cpp` loads the whole file but only
-addresses below 32 KB are readable, and writes to the cartridge are ignored.
-Only 32 KB ROM-only cartridges can run fully until MBC support lands.
+Battery-backed cartridges save external RAM to `<rom name>.sav` next to the ROM
+on exit and load it on start.
 
 ## Requirements
 
@@ -64,7 +64,8 @@ Builds and runs, in order:
 - `stat_test`: STAT interrupt line (edge detection, sources) and read-only STAT/LY bits
 - `joypad_test`: `0xFF00` register behavior
 - `ppu_test`: sprite (OBJ) and window rendering
-- Blargg ROMs: `cpu_instrs` 01-11 (individual), `instr_timing` and `halt_bug`
+- `cartridge_test`: MBC1/MBC5 banking, external RAM, `.sav` round-trip
+- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing` and `halt_bug`
 
 The Blargg ROMs are downloaded into `tests/roms/` on first run (needs `curl`)
 and executed headless (no SDL window). Output is `PASS`/`FAIL` per test. For a
@@ -83,11 +84,11 @@ src/memory.cpp     Address bus, echo RAM, IO register routing
 src/ppu.cpp        Scanline renderer (background, window, sprites), LCD modes, STAT
 src/timer.cpp      16-bit system counter driving DIV and TIMA
 src/input.cpp      Joypad register (0xFF00) and joypad interrupt
-src/cartridge.cpp  ROM loading
+src/cartridge.cpp  ROM loading, MBC1/MBC5 banking, external RAM, .sav files
 src/main.cpp       SDL frontend and main loop
 include/            Headers (cpu.h, memory.h, ppu.h, timer.h, input.h, cartridge.h)
 tests/run_rom.cpp  Headless Blargg ROM runner
-tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp   Standalone unit tests
+tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp, cartridge_test.cpp   Standalone unit tests
 tests/fetch_roms.sh  Downloads the Blargg ROMs
 ```
 

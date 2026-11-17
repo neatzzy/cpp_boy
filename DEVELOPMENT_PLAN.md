@@ -129,7 +129,13 @@ Pendente: confirmar `tetris.gb` jogável rodando `./emulator` com janela.
 
 Verificação: `tetris.gb` jogável do título ao game over.
 
-## Fase 3 — Cartuchos
+## Fase 3 — Cartuchos ✅ (implementada 2026-11-17; falta validação visual)
+
+MBC1, MBC5, RAM externa e `.sav` com `cartridge_test`; `cpu_instrs.gb`
+combinado passa. Bug extra corrigido: KEY1 (`0xFF4D`) lia 0 e o ROM achava
+que era CGB. Headless 1200 frames: Mario e Pokémon ligam o LCD e desenham sem
+travar. Pendente: jogar com janela e confirmar save do Pokémon entre execuções.
+`mem_timing` falha (Fase 5).
 
 1. **MBC1** — destrava `mario.gb` e o `cpu_instrs.gb` combinado.
 2. **MBC5 + RAM + bateria** (`.sav` ao lado da ROM, carrega no início, salva ao
