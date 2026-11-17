@@ -39,7 +39,12 @@ Debian/Ubuntu: `sudo apt install libsdl2-dev pkg-config g++`
 ```sh
 make
 ./emulator path/to/game.gb
+./emulator path/to/game.gb --boot path/to/dmg_boot.bin   # optional: run the real DMG boot ROM first
 ```
+
+Without `--boot` the emulator starts directly at `0x0100` with the DMG post-boot
+register state. The boot ROM (exactly 256 bytes, not included) is mapped over
+`0x0000-0x00FF` until the game writes a non-zero value to `0xFF50`.
 
 Controls:
 
