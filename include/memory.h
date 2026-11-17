@@ -16,6 +16,13 @@ public:
     Joypad* joypad = nullptr;
     APU* apu = nullptr;
 
+    // OAM DMA (0xFF46): 160 bytes, one per M-cycle
+    bool dma_active = false;
+    int dma_start = 0;          // M-cycles until a requested transfer starts
+    uint16_t dma_source = 0, dma_next = 0;
+    int dma_index = 0;
+    void dmaStep();
+
     std::vector<uint8_t> ram = std::vector<uint8_t>(65536, 0);
 
     Memory();

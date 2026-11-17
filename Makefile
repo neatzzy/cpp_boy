@@ -33,7 +33,8 @@ TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug cpu_instrs 
               mts_timer_div_write mts_timer_rapid_toggle mts_timer_tim00 mts_timer_tim00_div_trigger \
               mts_timer_tim01 mts_timer_tim01_div_trigger mts_timer_tim10 mts_timer_tim10_div_trigger \
               mts_timer_tim11 mts_timer_tim11_div_trigger mts_timer_tima_reload mts_timer_tima_write_reloading mts_timer_tma_write_reloading \
-              mts_oam_dma_basic mts_oam_dma_reg_read memt01 memt02 memt03
+              mts_oam_dma_basic mts_oam_dma_reg_read mts_oam_dma_start mts_oam_dma_timing \
+              mts_oam_dma_restart mts_oam_dma_sources-GS memt01 memt02 memt03
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(SDL2_LIBS)
