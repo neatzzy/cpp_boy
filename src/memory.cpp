@@ -14,7 +14,21 @@ Memory::Memory() {
     ram[0xFF41] = 0x85; // STAT: Enable VBlank interrupt, use mode 1 for OAM search
 }
 
+void Memory::loadBootRom(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("Cannot open boot ROM: " + path);
+    std::vector<uint8_t> data(std::istreambuf_iterator<char>(file), {});
+    if (data.size() != 256)
+        throw std::runtime_error("Boot ROM must be exactly 256 bytes (got " + std::to_string(data.size()) + "): " + path);
+    bootRom = std::move(data);
+    ram[0xFF40] = 0x00; // power-up: LCD off, the boot ROM turns it on
+    ram[0xFF47] = 0x00;
+    ram[0xFF41] = 0x80;
+}
+
 uint8_t Memory::read(uint16_t addr) {
+    if (addr < 0x0100 && !bootRom.empty()) return bootRom[addr];
+    if (addr == 0xFF50) return 0xFF;
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
     if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
@@ -42,6 +56,7 @@ void Memory::write(uint16_t addr, uint8_t value) {
     }
 
     if (addr == 0xFF44) return; // LY is read-only
+    if (addr == 0xFF50) { if (value) bootRom.clear(); return; } // unmap boot ROM, one-way
     if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
 
     if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {

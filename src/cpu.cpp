@@ -9,6 +9,11 @@ CPU::CPU(Memory& mem) : memory(mem) {
     // 16-bit registers
     SP = 0xFFFE;
     PC = 0x0100; // Skip BIOS — entry point post-BIOS
+    if (!memory.bootRom.empty()) { // real boot ROM: power-up state, start at 0x0000
+        A = F = B = C = D = E = H = L = 0;
+        SP = 0x0000;
+        PC = 0x0000;
+    }
     IME = false;
     enableIME_next = false;
     pendingIME = false;

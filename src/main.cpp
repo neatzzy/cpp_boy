@@ -6,11 +6,14 @@
 #include "apu.h"
 #include "cartridge.h"
 #include <iostream>
+#include <string>
 #include <SDL2/SDL.h>
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "Use: ./emulator <rom.gb>\n";
+    const char* bootPath = nullptr;
+    if (argc == 4 && std::string(argv[2]) == "--boot") bootPath = argv[3];
+    if (argc != 2 && !bootPath) {
+        std::cout << "Use: ./emulator <rom.gb> [--boot dmg_boot.bin]\n";
         return 1;
     }
 
@@ -20,6 +23,10 @@ int main(int argc, char** argv) {
 
         Memory memory;
         memory.cart = &cart; 
+        if (bootPath) {
+            try { memory.loadBootRom(bootPath); }
+            catch (const std::exception& e) { std::cerr << "Error: " << e.what() << "\n"; return 1; }
+        }
 
         PPU ppu(memory);
         Timer timer(memory);
