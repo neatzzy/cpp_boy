@@ -155,3 +155,9 @@ ligado (09, 10, 12), filtro passa-alta, resampling de qualidade (Fase 5).
 
 Delay de 1 M-cycle no reload de TIMA, DMA cycle-accurate, boot ROM real +
 `0xFF50`, PPU FIFO, testes mooneye-gb.
+
+Timing ✅ (2026-11-17): timer/PPU/APU avançam a cada acesso de barramento da CPU
+(ciclos internos no fim da instrução); interrupção amostrada no fim do fetch;
+reload de TIMA atrasado 1 M-cycle; OAM DMA com delay de 1 M-cycle e 160 M-cycles
+(só leituras de OAM bloqueadas). Verdes: Blargg `mem_timing` 01-03, mooneye
+`acceptance/timer/*` e `oam_dma*`.

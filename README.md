@@ -12,7 +12,9 @@ implemented, plus 4-channel audio. See
 | Component | State |
 |---|---|
 | CPU (all opcodes, CB prefix, interrupts, EI delay, HALT bug, illegal opcodes) | Done, passes Blargg `cpu_instrs` 01-11 |
-| Timer (DIV/TIMA/TMA/TAC) | Done, passes `instr_timing` and `02-interrupts` |
+| Timer (DIV/TIMA/TMA/TAC, delayed TIMA reload) | Done, passes `instr_timing`, `02-interrupts` and mooneye `acceptance/timer` |
+| M-cycle memory timing (timer/PPU/APU advance per CPU bus access) | Done, passes Blargg `mem_timing` 01-03 |
+| OAM DMA timing (1 M-cycle delay, 160 M-cycles, OAM reads 0xFF) | Done, passes mooneye `oam_dma*`; other bus conflicts not emulated |
 | PPU background | Done |
 | PPU STAT interrupts (LYC, modes 0/1/2) | Done |
 | Joypad (`0xFF00`, joypad interrupt) | Done, covered by `joypad_test` |
@@ -67,15 +69,18 @@ Builds and runs, in order:
 - `ppu_test`: sprite (OBJ) and window rendering
 - `cartridge_test`: MBC1/MBC5 banking, external RAM, `.sav` round-trip
 - `apu_test`: register masks, power, length, sweep, mixer output
-- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing`, `halt_bug`, `dmg_sound` 01-08 and 11
+- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing`, `halt_bug`, `mem_timing` 01-03, `dmg_sound` 01-08 and 11
+- mooneye-gb ROMs (`mts_*`): `acceptance/timer/*`, `acceptance/oam_dma/*`, `oam_dma_start`, `oam_dma_timing`, `oam_dma_restart`
 
-The Blargg ROMs are downloaded into `tests/roms/` on first run (needs `curl`)
+The ROMs are downloaded into `tests/roms/` on first run (needs `curl`; mooneye
+comes from the official `mts-20240926-1737-443f6e1` release tarball)
 and executed headless (no SDL window). Output is `PASS`/`FAIL` per test. For a
 failing ROM, the final screen text is saved to `build/<rom>.log`.
 
 How it works: Blargg ROMs print their verdict as ASCII tiles on the background
 map, so `tests/run_rom.cpp` runs the emulator core without SDL and reads the
-verdict from VRAM. The other tests are standalone programs that exit non-zero
+verdict from VRAM. Mooneye ROMs signal the end with `LD B,B`: the runner
+passes on B,C,D,E,H,L = 3,5,8,13,21,34 and fails on all 0x42. The other tests are standalone programs that exit non-zero
 on assertion failure.
 
 ## Layout
@@ -90,9 +95,9 @@ src/apu.cpp        Audio: channels, frame sequencer, stereo mixer (44.1 kHz)
 src/cartridge.cpp  ROM loading, MBC1/MBC5 banking, external RAM, .sav files
 src/main.cpp       SDL frontend (video, audio, input) and main loop
 include/            Headers (cpu.h, memory.h, ppu.h, timer.h, input.h, apu.h, cartridge.h)
-tests/run_rom.cpp  Headless Blargg ROM runner
+tests/run_rom.cpp  Headless Blargg/mooneye ROM runner
 tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp, cartridge_test.cpp, apu_test.cpp   Standalone unit tests
-tests/fetch_roms.sh  Downloads the Blargg ROMs
+tests/fetch_roms.sh  Downloads the Blargg and mooneye ROMs
 ```
 
 ## License
