@@ -143,7 +143,11 @@ travar. Pendente: jogar com janela e confirmar save do Pokémon entre execuçõe
 
 Pulado: MBC3/RTC. Nenhuma ROM do repo usa; adicionar quando aparecer uma.
 
-## Fase 4 — Áudio (APU)
+## Fase 4 — Áudio (APU) ✅ (implementada 2026-11-17; falta validação auditiva)
+
+APU com 4 canais, frame sequencer e mixer; saída SDL F32 estéreo 44,1 kHz.
+`apu_test` e `dmg_sound` 01–08, 11 verdes. Fora: acesso à wave RAM com canal 3
+ligado (09, 10, 12), filtro passa-alta, resampling de qualidade (Fase 5).
 
 4 canais + NR50/NR51/NR52, saída via SDL Audio. Não bloqueia jogabilidade.
 

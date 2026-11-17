@@ -1,10 +1,10 @@
 # cpp_boy
 
-A Game Boy (DMG) emulator written in C++23, with SDL2 for video.
+A Game Boy (DMG) emulator written in C++23, with SDL2 for video and audio.
 
 Work in progress: the CPU, timer and interrupts pass the Blargg test ROMs, and
 joypad, sprites, window and MBC1/MBC5 cartridges with battery saves are
-implemented. There is no audio yet. See
+implemented, plus 4-channel audio. See
 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) for the roadmap.
 
 ## Status
@@ -20,7 +20,8 @@ implemented. There is no audio yet. See
 | PPU window | Done, covered by `ppu_test` |
 | Cartridge banking (MBC1, MBC5), external RAM, battery saves | Done, covered by `cartridge_test` and combined `cpu_instrs` |
 | MBC2, MBC3 (RTC) | Not supported: runs as ROM-only with a warning |
-| Audio (APU) | Not started (Phase 4) |
+| Audio (APU: 2 square, wave, noise, mixer) | Done, covered by `apu_test` and Blargg `dmg_sound` 01-08, 11 |
+| Wave RAM access while channel 3 plays | Not emulated (`dmg_sound` 09, 10, 12 fail) |
 
 Battery-backed cartridges save external RAM to `<rom name>.sav` next to the ROM
 on exit and load it on start.
@@ -65,7 +66,8 @@ Builds and runs, in order:
 - `joypad_test`: `0xFF00` register behavior
 - `ppu_test`: sprite (OBJ) and window rendering
 - `cartridge_test`: MBC1/MBC5 banking, external RAM, `.sav` round-trip
-- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing` and `halt_bug`
+- `apu_test`: register masks, power, length, sweep, mixer output
+- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing`, `halt_bug`, `dmg_sound` 01-08 and 11
 
 The Blargg ROMs are downloaded into `tests/roms/` on first run (needs `curl`)
 and executed headless (no SDL window). Output is `PASS`/`FAIL` per test. For a
@@ -84,11 +86,12 @@ src/memory.cpp     Address bus, echo RAM, IO register routing
 src/ppu.cpp        Scanline renderer (background, window, sprites), LCD modes, STAT
 src/timer.cpp      16-bit system counter driving DIV and TIMA
 src/input.cpp      Joypad register (0xFF00) and joypad interrupt
+src/apu.cpp        Audio: channels, frame sequencer, stereo mixer (44.1 kHz)
 src/cartridge.cpp  ROM loading, MBC1/MBC5 banking, external RAM, .sav files
-src/main.cpp       SDL frontend and main loop
-include/            Headers (cpu.h, memory.h, ppu.h, timer.h, input.h, cartridge.h)
+src/main.cpp       SDL frontend (video, audio, input) and main loop
+include/            Headers (cpu.h, memory.h, ppu.h, timer.h, input.h, apu.h, cartridge.h)
 tests/run_rom.cpp  Headless Blargg ROM runner
-tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp, cartridge_test.cpp   Standalone unit tests
+tests/stat_test.cpp, joypad_test.cpp, ppu_test.cpp, cartridge_test.cpp, apu_test.cpp   Standalone unit tests
 tests/fetch_roms.sh  Downloads the Blargg ROMs
 ```
 
