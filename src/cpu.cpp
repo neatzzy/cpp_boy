@@ -129,7 +129,7 @@ void CPU::handleInterrupt() {
             IF &= ~(1 << i);
             memory.write_direct(0xFF0F, IF);
 
-            idle(8); // two internal M-cycles before the PC push
+            idle(4); // internal M-cycle (the discarded fetch was the first one)
             push(PC); // Salva onde estávamos
             idle(4);
             PC = 0x40 + (i * 8); // Salta para o vetor
@@ -145,25 +145,22 @@ int CPU::step() {
     if (locked || stopped) { idle(4); return 4; }
 
     if(halted) {
-        if(interruptPending()) {
-            halted = false;
-            if(IME) {
-                handleInterrupt();
-                return 20;
-            }
-        } else {
+        if(!interruptPending()) {
             idle(4);
             return 4;
         }
+        halted = false;
     }
 
-    uint8_t opcode;
-    if (haltBug) {
-        opcode = busRead(PC); // HALT bug: re-read the same byte without incrementing PC
-        haltBug = false;
-    } else {
-        opcode = busRead(PC++);
+    // Interrupts are sampled at the end of the opcode-fetch M-cycle, as on hardware:
+    // if one is taken, the fetched opcode is discarded and the dispatch takes 5 M-cycles.
+    uint8_t opcode = busRead(PC);
+    if(IME && interruptPending()) {
+        handleInterrupt();
+        return ticked;
     }
+    if (haltBug) haltBug = false; // HALT bug: the same byte is read again, PC not incremented
+    else PC++;
 
     if (opcode == 0xCB) {
         uint8_t cb_opcode = busRead(PC++);
@@ -183,11 +180,6 @@ int CPU::step() {
     if(enableIME_next) {
         pendingIME = true;
         enableIME_next = false;
-    }
-
-    if(IME && interruptPending()) {
-        handleInterrupt();
-        cycles += 20;
     }
 
     return cycles;
