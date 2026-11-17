@@ -26,7 +26,8 @@ TEST_RUNNER = $(BUILD_DIR)/run_rom
 STAT_TEST   = $(BUILD_DIR)/stat_test
 JOYPAD_TEST = $(BUILD_DIR)/joypad_test
 PPU_TEST    = $(BUILD_DIR)/ppu_test
-TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug
+CART_TEST   = $(BUILD_DIR)/cartridge_test
+TEST_ROMS   = 01 02 03 04 05 06 07 08 09 10 11 instr_timing halt_bug cpu_instrs
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(SDL2_LIBS)
@@ -46,15 +47,19 @@ $(JOYPAD_TEST): tests/joypad_test.cpp $(CORE_OBJS) | $(BUILD_DIR)
 $(PPU_TEST): tests/ppu_test.cpp $(CORE_OBJS) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(INC_DIR) tests/ppu_test.cpp $(CORE_OBJS) -o $@
 
+$(CART_TEST): tests/cartridge_test.cpp $(CORE_OBJS) | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(INC_DIR) tests/cartridge_test.cpp $(CORE_OBJS) -o $@
+
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-test: $(TEST_RUNNER) $(STAT_TEST) $(JOYPAD_TEST) $(PPU_TEST)
+test: $(TEST_RUNNER) $(STAT_TEST) $(JOYPAD_TEST) $(PPU_TEST) $(CART_TEST)
 	@sh tests/fetch_roms.sh
 	@fail=0; \
 	if $(STAT_TEST); then echo "PASS stat_test"; else echo "FAIL stat_test"; fail=1; fi; \
 	if $(JOYPAD_TEST); then echo "PASS joypad_test"; else echo "FAIL joypad_test"; fail=1; fi; \
 	if $(PPU_TEST); then echo "PASS ppu_test"; else echo "FAIL ppu_test"; fail=1; fi; \
+	if $(CART_TEST); then echo "PASS cartridge_test"; else echo "FAIL cartridge_test"; fail=1; fi; \
 	for rom in $(TEST_ROMS); do \
 		if $(TEST_RUNNER) tests/roms/$$rom.gb > $(BUILD_DIR)/$$rom.log; then \
 			echo "PASS $$rom"; \

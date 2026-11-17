@@ -27,3 +27,7 @@ void Cartridge::write(uint16_t, uint8_t) {
     // Most cartridges are read-only, but some may have writable areas (e.g., for save data).
     // This function can be expanded to handle specific cartridge types that support writing.
 }
+
+void Cartridge::loadData(std::vector<uint8_t> data) { rom = std::move(data); }
+
+void Cartridge::save() {}
