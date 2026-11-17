@@ -27,6 +27,7 @@ uint8_t Memory::read(uint16_t addr) {
     if (apu && addr >= 0xFF10 && addr <= 0xFF3F) return apu->read(addr);
 
     if (addr == 0xFF4D) return 0xFF; // KEY1 is CGB-only; DMG reads 0xFF (blargg uses it to detect CGB)
+    if (addr == 0xFF07) return ram[addr] | 0xF8; // TAC: unused upper 5 bits read as 1
     if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
 
     return ram[addr];
@@ -41,6 +42,8 @@ void Memory::write(uint16_t addr, uint8_t value) {
         return;
     }
 
+    if (timer && addr == 0xFF05) { timer->writeTIMA(value); return; }
+    if (timer && addr == 0xFF06) { timer->writeTMA(value); return; }
     if (addr == 0xFF44) return; // LY is read-only
     if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
 

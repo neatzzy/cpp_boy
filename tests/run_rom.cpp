@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
                     static const uint8_t fib[6] = {3, 5, 8, 13, 21, 34};
                     if (std::equal(r, r + 6, fib)) return 0;
                     if (std::all_of(r, r + 6, [](uint8_t v) { return v == 0x42; })) {
-                        std::printf("mooneye: Failed\n");
+                        std::printf("%smooneye: Failed\n", screenText(ppu).c_str());
                         return 1;
                     }
                 }
