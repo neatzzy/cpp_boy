@@ -104,5 +104,42 @@ int main() {
     assert(play(0x22));
     assert(apu.samples.size() >= 2 * 730 && apu.samples.size() <= 2 * 740); // ~738 stereo frames per video frame
     assert(!play(0x00));
+
+    // Wave RAM while ch3 plays (DMG): CPU sees only the byte being read this cycle.
+    auto startWave = [&](uint16_t f, int cycles) {
+        powerCycle(memory);
+        for (int i = 0; i < 16; i++) memory.write(0xFF30 + i, i * 0x11);
+        memory.write(0xFF1A, 0x80);
+        memory.write(0xFF1D, f & 0xFF);
+        memory.write(0xFF1E, 0x80 | (f >> 8));
+        apu.tick(cycles);
+    };
+    auto waveRam = [&](int i) { memory.write(0xFF1A, 0x00); return memory.read(0xFF30 + i); };
+
+    startWave(0x700, 0);
+    assert(memory.read(0xFF30) == 0xFF);  // no sample read this cycle
+    memory.write(0xFF3F, 0x5A);           // ignored
+    assert(waveRam(15) == 0xFF);
+
+    // Max frequency reads a sample every 2 T-cycles; first read 6 T-cycles late, at index 1.
+    startWave(0x7FF, 6);
+    assert(memory.read(0xFF30) == 0xFF);
+    startWave(0x7FF, 8);
+    assert(memory.read(0xFF3F) == 0x00);  // index 1 -> byte 0
+    startWave(0x7FF, 12);
+    assert(memory.read(0xFF35) == 0x11);  // index 3 -> byte 1
+    memory.write(0xFF30, 0x5A);           // lands in the byte being read
+    assert(waveRam(1) == 0x5A);
+
+    // Retrigger on a read cycle corrupts the start of wave RAM.
+    startWave(0x7FF, 10);                 // index 2: next byte is 1
+    memory.write(0xFF1E, 0x87);
+    assert(waveRam(0) == 0x11 && waveRam(1) == 0x11 && waveRam(4) == 0x44);
+    startWave(0x7FF, 24);                 // index 9: next byte is 5 -> copy block 4-7
+    memory.write(0xFF1E, 0x87);
+    for (int i = 0; i < 8; i++) assert(waveRam(i) == ((i & 3) + 4) * 0x11);
+    startWave(0x700, 24);                 // not on a read cycle: untouched
+    memory.write(0xFF1E, 0x87);
+    for (int i = 0; i < 16; i++) assert(waveRam(i) == i * 0x11);
     return 0;
 }

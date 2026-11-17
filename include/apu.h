@@ -38,6 +38,13 @@ private:
 
     uint16_t lfsr = 0x7FFF;
 
+    // ch3 runs at 2 MHz (every other T-cycle); timer counts down to the next sample read.
+    bool waveHalf = false;
+    bool waveJustRead = false;  // a sample was read on the last 2 MHz cycle
+
+    uint8_t* waveByte(uint16_t addr);
+    void stepWave();
+
     uint8_t& reg(uint16_t addr) { return regs[addr - 0xFF10]; }
     int freq(int n);
     void setFreq(int n, int f);
