@@ -15,7 +15,7 @@
 
 static std::string screenText(PPU& ppu) {
     std::string text;
-    for (int y = 0; y < 18; y++) {
+    for (int y = 0; y < 32; y++) {
         for (int x = 0; x < 20; x++) {
             uint8_t tile = ppu.readVRAM(0x9800 + y * 32 + x);
             text += (tile >= 32 && tile < 127) ? (char)tile : ' ';
