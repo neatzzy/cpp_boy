@@ -7,6 +7,7 @@
 #include "timer.h"
 #include "input.h"
 #include "ppu.h"
+#include "apu.h"
 #include "cartridge.h"
 #include <cstdio>
 #include <cstdlib>
@@ -38,10 +39,12 @@ int main(int argc, char** argv) {
     PPU ppu(memory);
     Timer timer(memory);
     Joypad joypad(memory);
+    APU apu;
     CPU cpu(memory);
     memory.ppu = &ppu;
     memory.timer = &timer;
     memory.joypad = &joypad;
+    memory.apu = &apu;
 
     std::string text;
     try {
@@ -51,8 +54,10 @@ int main(int argc, char** argv) {
                 int n = cpu.step();
                 timer.tick(n);
                 ppu.tick(n);
+                apu.tick(n);
                 cycles += n;
             }
+            apu.samples.clear();
             text = screenText(ppu);
             if (text.find("Passed") != std::string::npos) return 0;
             if (text.find("Failed") != std::string::npos) break;

@@ -102,7 +102,7 @@ int main() {
         return loud;
     };
     assert(play(0x22));
-    assert(apu.samples.size() >= 2 * 730 && apu.samples.size() <= 2 * 740); // ~735 stereo frames
+    assert(apu.samples.size() >= 2 * 730 && apu.samples.size() <= 2 * 740); // ~738 stereo frames per video frame
     assert(!play(0x00));
     return 0;
 }
