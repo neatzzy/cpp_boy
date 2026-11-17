@@ -16,9 +16,8 @@ Memory::Memory() {
 uint8_t Memory::read(uint16_t addr) {
     if (addr >= 0xE000 && addr <= 0xFDFF) addr -= 0x2000; // Echo RAM mirrors WRAM
 
-    if(addr < 0x8000){
-        if (cart) return cart->read(addr); 
-        return 0xFF;
+    if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
+        return cart ? cart->read(addr) : 0xFF; // ROM banks and external RAM
     }
 
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
@@ -42,9 +41,8 @@ void Memory::write(uint16_t addr, uint8_t value) {
     if (addr == 0xFF44) return; // LY is read-only
     if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
 
-    if(addr < 0x8000){
-        // Delegate writes to the cartridge if the address is in the ROM area. Most cartridges won't actually write to this area, but some might have special behavior (e.g., for bank switching).
-        if (cart) cart->write(addr, value);
+    if (addr < 0x8000 || (addr >= 0xA000 && addr <= 0xBFFF)) {
+        if (cart) cart->write(addr, value); // MBC registers and external RAM
         return;
     }
 

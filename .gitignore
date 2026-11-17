@@ -41,4 +41,4 @@ roms/
 *.gb
 
 # VSCODE
-.vscode/
+.vscode/*.sav

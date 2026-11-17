@@ -90,6 +90,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        cart.save();
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
