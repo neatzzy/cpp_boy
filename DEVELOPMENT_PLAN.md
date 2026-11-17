@@ -151,7 +151,7 @@ ligado (09, 10, 12), filtro passa-alta, resampling de qualidade (Fase 5).
 
 4 canais + NR50/NR51/NR52, saída via SDL Audio. Não bloqueia jogabilidade.
 
-## Fase 5 — Precisão (opcional)
+## Fase 5 — Precisão (opcional) ✅ parcial (2026-11-17)
 
 Delay de 1 M-cycle no reload de TIMA, DMA cycle-accurate, boot ROM real +
 `0xFF50`, PPU FIFO, testes mooneye-gb.
@@ -161,3 +161,21 @@ Timing ✅ (2026-11-17): timer/PPU/APU avançam a cada acesso de barramento da C
 reload de TIMA atrasado 1 M-cycle; OAM DMA com delay de 1 M-cycle e 160 M-cycles
 (só leituras de OAM bloqueadas). Verdes: Blargg `mem_timing` 01-03, mooneye
 `acceptance/timer/*` e `oam_dma*`.
+
+Wave RAM ✅: acesso com canal 3 ligado e corrupção no retrigger (DMG);
+`dmg_sound` 01–12 todos verdes. Runner passou a ler as 32 linhas do tilemap.
+
+Boot ROM ✅: `--boot <arquivo>` (256 bytes), mapeia 0x0000–0x00FF até escrita
+não-zero em `0xFF50`; `boot_test`. Validado localmente com `gb_bios.bin`.
+
+`make test`: 54 PASS.
+
+Não feito (sem demanda atual):
+- PPU FIFO (reescrita grande; nenhum teste/jogo local depende).
+- Ciclos internos na posição exata dentro da instrução (hoje no fim).
+- Conflitos de barramento do DMA fora da OAM.
+- Valores pós-boot de NR50/NR51/NR52 sem boot ROM.
+- mooneye que falham: `bits/unused_hwio-GS`, `rapid_di_ei`, `di_timing-GS`,
+  `halt_ime1_timing2-GS`. Passam mas fora da lista: `div_timing`, `ei_timing`,
+  `intr_timing`, `halt_ime1_timing`, `halt_ime0_ei`, `ei_sequence`.
+- Filtro passa-alta e resampling de qualidade no áudio.

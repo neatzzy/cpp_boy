@@ -22,8 +22,8 @@ implemented, plus 4-channel audio. See
 | PPU window | Done, covered by `ppu_test` |
 | Cartridge banking (MBC1, MBC5), external RAM, battery saves | Done, covered by `cartridge_test` and combined `cpu_instrs` |
 | MBC2, MBC3 (RTC) | Not supported: runs as ROM-only with a warning |
-| Audio (APU: 2 square, wave, noise, mixer) | Done, covered by `apu_test` and Blargg `dmg_sound` 01-08, 11 |
-| Wave RAM access while channel 3 plays | Not emulated (`dmg_sound` 09, 10, 12 fail) |
+| Audio (APU: 2 square, wave, noise, mixer) | Done, covered by `apu_test` and Blargg `dmg_sound` 01-12 |
+| PPU pixel FIFO (mid-scanline timing) | Not implemented: scanline renderer |
 
 Battery-backed cartridges save external RAM to `<rom name>.sav` next to the ROM
 on exit and load it on start.
@@ -74,7 +74,7 @@ Builds and runs, in order:
 - `ppu_test`: sprite (OBJ) and window rendering
 - `cartridge_test`: MBC1/MBC5 banking, external RAM, `.sav` round-trip
 - `apu_test`: register masks, power, length, sweep, mixer output
-- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing`, `halt_bug`, `mem_timing` 01-03, `dmg_sound` 01-08 and 11
+- Blargg ROMs: `cpu_instrs` 01-11 (individual and combined), `instr_timing`, `halt_bug`, `mem_timing` 01-03, `dmg_sound` 01-12
 - mooneye-gb ROMs (`mts_*`): `acceptance/timer/*`, `acceptance/oam_dma/*`, `oam_dma_start`, `oam_dma_timing`, `oam_dma_restart`
 
 The ROMs are downloaded into `tests/roms/` on first run (needs `curl`; mooneye
