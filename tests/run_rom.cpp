@@ -1,7 +1,9 @@
-// Headless test runner for Blargg ROMs.
+// Headless test runner for Blargg and mooneye-gb ROMs.
 // Blargg tests print results as ASCII tiles on the background map, so the
 // verdict is read straight from VRAM: "Passed" -> exit 0, "Failed" -> exit 1,
 // no verdict within the frame limit -> exit 2.
+// Mooneye tests execute LD B,B (0x40) when done: B,C,D,E,H,L = 3,5,8,13,21,34
+// means pass, all 0x42 means fail.
 #include "cpu.h"
 #include "memory.h"
 #include "timer.h"
@@ -9,6 +11,7 @@
 #include "ppu.h"
 #include "apu.h"
 #include "cartridge.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -51,11 +54,16 @@ int main(int argc, char** argv) {
         for (int frame = 0; frame < maxFrames; frame++) {
             int cycles = 0;
             while (cycles < 70224) {
-                int n = cpu.step();
-                timer.tick(n);
-                ppu.tick(n);
-                apu.tick(n);
-                cycles += n;
+                if (!cpu.halted && memory.read(cpu.PC) == 0x40) {
+                    uint8_t r[6] = {cpu.B, cpu.C, cpu.D, cpu.E, cpu.H, cpu.L};
+                    static const uint8_t fib[6] = {3, 5, 8, 13, 21, 34};
+                    if (std::equal(r, r + 6, fib)) return 0;
+                    if (std::all_of(r, r + 6, [](uint8_t v) { return v == 0x42; })) {
+                        std::printf("%smooneye: Failed\n", screenText(ppu).c_str());
+                        return 1;
+                    }
+                }
+                cycles += cpu.step(); // step() ticks timer/PPU/APU itself
             }
             apu.samples.clear();
             text = screenText(ppu);

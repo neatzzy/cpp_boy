@@ -36,11 +36,14 @@ uint8_t Memory::read(uint16_t addr) {
     }
 
     if (addr >= 0x8000 && addr <= 0x9FFF) return ppu->readVRAM(addr);
-    if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
+    // ponytail: during OAM DMA only OAM reads are blocked (0xFF); full DMG bus-conflict
+    // emulation (ROM/WRAM/VRAM reads returning the DMA byte) is not modeled.
+    if (addr >= 0xFE00 && addr <= 0xFE9F) return dma_active ? 0xFF : ppu->readOAM(addr);
     if (addr == 0xFF00) return joypad ? joypad->read() : 0xFF;
     if (apu && addr >= 0xFF10 && addr <= 0xFF3F) return apu->read(addr);
 
     if (addr == 0xFF4D) return 0xFF; // KEY1 is CGB-only; DMG reads 0xFF (blargg uses it to detect CGB)
+    if (addr == 0xFF07) return ram[addr] | 0xF8; // TAC: unused upper 5 bits read as 1
     if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
 
     return ram[addr];
@@ -55,6 +58,8 @@ void Memory::write(uint16_t addr, uint8_t value) {
         return;
     }
 
+    if (timer && addr == 0xFF05) { timer->writeTIMA(value); return; }
+    if (timer && addr == 0xFF06) { timer->writeTMA(value); return; }
     if (addr == 0xFF44) return; // LY is read-only
     if (addr == 0xFF50) { if (value) bootRom.clear(); return; } // unmap boot ROM, one-way
     if (addr == 0xFF41) { ram[0xFF41] = (ram[0xFF41] & 0x87) | (value & 0x78); return; } // only bits 3-6 writable
@@ -65,11 +70,11 @@ void Memory::write(uint16_t addr, uint8_t value) {
     }
 
     if (addr == 0xFF46) {
-    uint16_t source = value << 8;
-    for (int i = 0; i < 160; i++) {
-        ppu->writeOAM(0xFE00 + i, read(source + i));
+        // OAM DMA starts after a 1 M-cycle delay; a running transfer keeps going until then
+        dma_next = value << 8;
+        if (dma_next >= 0xE000) dma_next -= 0x2000; // 0xE0-0xFF sources read echo RAM
+        dma_start = 2;
     }
-}
 
     if (addr == 0xFF00) { if (joypad) joypad->write(value); return; }
     if (apu && addr >= 0xFF10 && addr <= 0xFF3F) { apu->write(addr, value); return; }
@@ -87,6 +92,26 @@ uint16_t Memory::read16(uint16_t addr) {
 void Memory::write16(uint16_t addr, uint16_t value) {
     write(addr, value & 0xFF);
     write(addr + 1, (value >> 8) & 0xFF);
+}
+
+// One OAM DMA byte per M-cycle
+void Memory::dmaStep() {
+    if (dma_start > 0 && --dma_start == 0) {
+        dma_active = true;
+        dma_source = dma_next;
+        dma_index = 0;
+    }
+    if (!dma_active) return;
+    if (dma_index == 160) { dma_active = false; return; } // OAM stays blocked through the last byte's M-cycle
+    ppu->writeOAM(0xFE00 + dma_index, read(dma_source + dma_index));
+    dma_index++;
+}
+
+void Memory::tick(int cycles) {
+    for (int m = 0; m < cycles / 4; m++) dmaStep();
+    if (timer) timer->tick(cycles);
+    if (ppu) ppu->tick(cycles);
+    if (apu) apu->tick(cycles);
 }
 
 void Memory::requestInterrupt(uint8_t interrupt_bit) {
