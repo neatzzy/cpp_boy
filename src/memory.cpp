@@ -24,6 +24,7 @@ uint8_t Memory::read(uint16_t addr) {
     if (addr >= 0xFE00 && addr <= 0xFE9F) return ppu->readOAM(addr);
     if (addr == 0xFF00) return joypad ? joypad->read() : 0xFF;
 
+    if (addr == 0xFF4D) return 0xFF; // KEY1 is CGB-only; DMG reads 0xFF (blargg uses it to detect CGB)
     if (addr == 0xFF0F) return ram[addr] | 0xE0; // IF: unused upper 3 bits read as 1
 
     return ram[addr];

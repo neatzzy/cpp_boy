@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
         std::printf("Use: ./run_rom <rom.gb> [max_frames]\n");
         return 2;
     }
-    int maxFrames = argc > 2 ? std::atoi(argv[2]) : 3600;
+    int maxFrames = argc > 2 ? std::atoi(argv[2]) : 6000; // combined cpu_instrs needs ~3300
 
     Cartridge cart;
     cart.load(argv[1]);
