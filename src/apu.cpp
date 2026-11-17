@@ -34,8 +34,15 @@ bool APU::dacOn(int n) {
     return reg(0xFF12 + 5 * n) & 0xF8;
 }
 
+// DMG: while ch3 plays, wave RAM accesses hit the byte it is reading, but only
+// on the cycle it reads it; otherwise reads give 0xFF and writes are dropped.
+uint8_t* APU::waveByte(uint16_t addr) {
+    if (!ch[2].enabled) return &reg(addr);
+    return waveJustRead ? &reg(0xFF30 + ch[2].pos / 2) : nullptr;
+}
+
 uint8_t APU::read(uint16_t addr) {
-    if (addr >= 0xFF30) return reg(addr); // wave RAM
+    if (addr >= 0xFF30) { uint8_t* b = waveByte(addr); return b ? *b : 0xFF; }
     if (addr == 0xFF26) {
         uint8_t status = 0x70 | (power ? 0x80 : 0);
         for (int n = 0; n < 4; n++) if (ch[n].enabled) status |= 1 << n;
@@ -45,7 +52,7 @@ uint8_t APU::read(uint16_t addr) {
 }
 
 void APU::write(uint16_t addr, uint8_t value) {
-    if (addr >= 0xFF30) { reg(addr) = value; return; }
+    if (addr >= 0xFF30) { if (uint8_t* b = waveByte(addr)) *b = value; return; }
 
     if (addr == 0xFF26) {
         bool on = value & 0x80;
@@ -105,6 +112,7 @@ void APU::writeNRx4(int n, uint8_t value) {
 
 void APU::trigger(int n) {
     Channel& c = ch[n];
+    bool wasOn = c.enabled;
     c.enabled = true;
     if (c.length == 0) {
         c.length = lengthMax(n);
@@ -117,10 +125,19 @@ void APU::trigger(int n) {
         int r = nr43 & 7;
         c.timer = (r ? r * 16 : 8) << (nr43 >> 4);
         lfsr = 0x7FFF;
+    } else if (n == 2) {
+        // DMG: retrigger on a sample-read cycle corrupts the first bytes of wave RAM.
+        if (wasOn && c.timer == 0) {
+            int next = ((c.pos + 1) >> 1) & 0xF;
+            if (next < 4) reg(0xFF30) = reg(0xFF30 + next);
+            else for (int i = 0; i < 4; i++) reg(0xFF30 + i) = reg(0xFF30 + (next & ~3) + i);
+        }
+        c.timer = 2047 - f + 3; // first read 6 T-cycles later than a normal period
+        c.pos = 0;
+        waveJustRead = false;
     } else {
-        c.timer = (2048 - f) * (n == 2 ? 2 : 4);
+        c.timer = (2048 - f) * 4;
     }
-    if (n == 2) c.pos = 0;
 
     if (n != 2) {
         uint8_t nrx2 = reg(0xFF12 + 5 * n);
@@ -183,7 +200,8 @@ void APU::clockEnvelope() {
 }
 
 void APU::stepChannels() {
-    for (int n = 0; n < 4; n++) {
+    if ((waveHalf = !waveHalf)) stepWave();
+    for (int n : {0, 1, 3}) {
         Channel& c = ch[n];
         if (--c.timer > 0) continue;
         if (n == 3) {
@@ -193,14 +211,21 @@ void APU::stepChannels() {
             int x = (lfsr ^ (lfsr >> 1)) & 1;
             lfsr = (lfsr >> 1) | (x << 14);
             if (nr43 & 0x08) lfsr = (lfsr & ~0x40) | (x << 6);
-        } else if (n == 2) {
-            c.timer = (2048 - freq(2)) * 2;
-            c.pos = (c.pos + 1) & 31;
         } else {
             c.timer = (2048 - freq(n)) * 4;
             c.pos = (c.pos + 1) & 7;
         }
     }
+}
+
+void APU::stepWave() {
+    Channel& c = ch[2];
+    waveJustRead = false;
+    if (!c.enabled) return;
+    if (c.timer > 0) { c.timer--; return; }
+    c.timer = 2047 - freq(2);
+    c.pos = (c.pos + 1) & 31;
+    waveJustRead = true;
 }
 
 int APU::output(int n) {
